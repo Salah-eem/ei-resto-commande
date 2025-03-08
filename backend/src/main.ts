@@ -4,6 +4,8 @@ import { ValidationPipe } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
 import * as cookieParser from 'cookie-parser';
+import * as bodyParser from 'body-parser';
+
 
 
 async function bootstrap() {
@@ -25,6 +27,10 @@ async function bootstrap() {
   app.useStaticAssets(join(__dirname, '..', 'public'));
 
   app.use(cookieParser()); // ✅ Utiliser le cookie-parser
+
+
+  app.use('/payments/stripe/webhook', bodyParser.raw({ type: 'application/json' }));
+
 
   
   await app.listen(process.env.PORT ?? 3001);

@@ -7,6 +7,7 @@ import { IsEmailUniqueConstraint } from './user/validator/email-validator';
 import { ProductModule } from './product/product.module';
 import { CategoryModule } from './category/category.module';
 import { CartModule } from './cart/cart.module';
+import { PaymentModule } from './payment/payment.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { CartModule } from './cart/cart.module';
     ProductModule,
     CategoryModule,
     CartModule,
+    PaymentModule,
   ],
   controllers: [],
     
