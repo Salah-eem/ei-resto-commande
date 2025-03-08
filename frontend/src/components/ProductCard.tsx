@@ -43,6 +43,8 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isHorizontal = false
         price: product.productType === ProductType.SINGLE_PRICE ? product.basePrice! : product.sizes?.find(s => s.name === size)?.price || 0,
         quantity,
         size: size || undefined,
+        image: product.image_url,
+        category: product.category,
       },
     };
 
@@ -51,17 +53,19 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isHorizontal = false
   };
 
   return (
-    <Card
-      sx={{
-        width: isHorizontal ? '100%' : 250,
-        borderRadius: 3,
-        boxShadow: 4,
-        display: isHorizontal ? 'flex' : 'block',
-        flexDirection: isHorizontal ? 'row-reverse' : 'column',
-        transition: 'transform 0.3s',
-        '&:hover': { transform: 'scale(1.03)' }
-      }}
-    >
+      <Card
+        sx={{
+          width: isHorizontal ? '100%' : 250,
+          minHeight: isHorizontal ? 140 : 340, // Ajustement dynamique de la hauteur
+          borderRadius: 3,
+          boxShadow: 4,
+          display: 'flex',
+          flexDirection: isHorizontal ? 'row-reverse' : 'column',
+          transition: 'transform 0.3s',
+          '&:hover': { transform: 'scale(1.03)' }
+        }}
+      >
+
       <Box sx={{ position: 'relative' }}>
         <CardMedia
           component="img"
@@ -77,14 +81,34 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isHorizontal = false
           </IconButton>
         </Box>
       </Box>
-      <CardContent sx={{ flex: isHorizontal ? 1 : 'none', display: 'flex', flexDirection: 'column', gap: 1 }}>
-        <Typography variant="h6" fontWeight="bold">{product.name}</Typography>
-        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-          {product.productType === ProductType.SINGLE_PRICE
-            ? `${product.basePrice?.toFixed(2)} €`
-            : `À partir de ${product.sizes?.[0].price.toFixed(2)} €`}
-        </Typography>
-        <Typography variant="body2" sx={{ color: 'text.secondary' }}>{product.description}</Typography>
+      <CardContent
+        sx={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between',
+          gap: 1,
+        }}
+      >
+        <Box>
+          <Typography variant="h6" fontWeight="bold">{product.name}</Typography>
+          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+            {product.productType === ProductType.SINGLE_PRICE
+              ? `${product.basePrice?.toFixed(2)} €`
+              : `À partir de ${product.sizes?.[0].price.toFixed(2)} €`}
+          </Typography>
+          <Typography
+            variant="body2"
+            sx={{
+              color: 'text.secondary',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {product.description}
+          </Typography>
+        </Box>
       </CardContent>
       {product.productType === ProductType.MULTIPLE_SIZES && (
         <SizeDialog product={product} open={openDialog} onClose={handleCloseDialog} onConfirm={handleConfirmSize} />

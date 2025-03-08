@@ -44,6 +44,11 @@ const CartDialog: React.FC<CartDialogProps> = ({ open, onClose }) => {
     }
   };
 
+  const goToCart = () => {
+    router.push("/cart");
+    onClose();
+  }
+
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
       <DialogTitle sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -88,7 +93,7 @@ const CartDialog: React.FC<CartDialogProps> = ({ open, onClose }) => {
         )}
         <Box sx={{ mt: 2, textAlign: "center" }}>
           <Typography variant="h6">Total : {totalPrice.toFixed(2)}€</Typography>
-          <Button onClick={() => router.push("/cart")} variant="contained" sx={{ mt: 1 }}>
+          <Button onClick={goToCart} variant="contained" sx={{ mt: 1 }}>
             Voir le panier
           </Button>
         </Box>

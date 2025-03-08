@@ -71,6 +71,16 @@ export const removeFromCart = createAsyncThunk(
   }
 );
 
+// 📌 Vider complètement le panier
+export const clearCart = createAsyncThunk("cart/clearCart", async (userId: string, { rejectWithValue }) => {
+  try {
+    await axios.delete(`${API_URL}/${userId}/clear`);
+    return [];
+  } catch (error: any) {
+    return rejectWithValue(error.response?.data?.message || "Erreur lors de la suppression du panier.");
+  }
+});
+
 const cartSlice = createSlice({
   name: "cart",
   initialState,
@@ -129,6 +139,20 @@ const cartSlice = createSlice({
         state.items = action.payload;
       })
       .addCase(removeFromCart.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      })
+
+      // ✅ Vider complètement le panier
+      .addCase(clearCart.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(clearCart.fulfilled, (state) => {
+        state.loading = false;
+        state.items = [];
+      })
+      .addCase(clearCart.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload as string;
       });

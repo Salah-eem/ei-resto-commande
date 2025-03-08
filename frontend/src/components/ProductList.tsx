@@ -75,7 +75,7 @@ const ProductList: React.FC = () => {
         }}
       >
         {products.map((product) => (
-          <Box key={product._id} sx={{ scrollSnapAlign: 'start' }}>
+          <Box key={product._id} sx={{ scrollSnapAlign: 'start', minHeight: 340 }}>
             <ProductCard product={product} isHorizontal={false} /> {/* Affichage vertical */}
           </Box>
         ))}
@@ -102,8 +102,10 @@ const ProductList: React.FC = () => {
       {/* Liste des produits filtrés */}
       <Grid container spacing={2}>
         {filteredProducts.map((product) => (
-          <Grid item xs={12} sm={6} key={product._id}> {/* Deux cartes par ligne */}
-            <ProductCard product={product} isHorizontal={true} /> {/* Affichage horizontal */}
+          <Grid item xs={12} sm={6} key={product._id}>
+            <Box sx={{ minHeight: 140 }}>
+              <ProductCard product={product} isHorizontal={true} /> {/* Affichage horizontal */}
+            </Box>
           </Grid>
         ))}
       </Grid>
