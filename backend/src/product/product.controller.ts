@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Put } from '@nestjs/common';
 import { ProductService } from './product.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { Product } from 'src/schemas/product.schema';
@@ -19,10 +19,14 @@ export class ProductController {
     }
 
     @Patch(':productId')
-    async updateProduct(
-      @Param('productId') productId: string,
-      @Body() updateData: Partial<Product>
+    async updateProduct(@Param('productId') productId: string, @Body() updateData: Partial<Product>
     ): Promise<Product> {
       return this.productService.updateProduct(productId, updateData);
     }
+
+  // Mettre à jour TOUS les produits
+  @Put('/update-all')
+  async updateAllProducts(@Body() updateData: Partial<Product>) {
+    return this.productService.updateAllProducts(updateData);
+  }
 }

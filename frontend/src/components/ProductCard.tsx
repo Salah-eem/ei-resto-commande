@@ -5,7 +5,7 @@ import AddCircleIcon from '@mui/icons-material/AddCircle';
 import { useDispatch } from 'react-redux';
 import { addToCart } from '@/store/slices/cartSlice';
 import { getUserId } from '@/utils/user';
-import { Product } from "@/types/product";
+import { Product, ProductType } from '@/types/product';
 import SizeDialog from './SizeDialog';
 
 interface ProductCardProps {
@@ -19,9 +19,6 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isHorizontal = false
   const [openDialog, setOpenDialog] = useState(false);
   const [selectedSize, setSelectedSize] = useState<string | undefined>(undefined);
 
-  // ✅ Vérification si le produit a des tailles
-  const hasSizes = product.sizes && product.sizes.length > 0;
-
   useEffect(() => {
     setUserId(getUserId());
   }, []);
@@ -29,13 +26,13 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isHorizontal = false
   const handleClickOpen = () => setOpenDialog(true);
   const handleCloseDialog = () => setOpenDialog(false);
 
-  const handleConfirmSize = (size: string) => {
+  const handleConfirmSize = (size: string, quantity: number) => {
     setSelectedSize(size);
-    handleAddToCart(size);
+    handleAddToCart(size, quantity);
     handleCloseDialog();
   };
 
-  const handleAddToCart = (size?: string) => {
+  const handleAddToCart = (size?: string, quantity: number = 1) => {
     if (!userId) return;
 
     const cartItem = {
@@ -43,11 +40,12 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isHorizontal = false
       item: {
         productId: product._id,
         name: product.name,
-        price: product.price,
-        quantity: 1,
+        price: product.productType === ProductType.SINGLE_PRICE ? product.basePrice! : product.sizes?.find(s => s.name === size)?.price || 0,
+        quantity,
         size: size || undefined,
       },
     };
+
     console.log('Adding to cart:', cartItem);
     dispatch(addToCart(cartItem) as any);
   };
@@ -74,17 +72,21 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isHorizontal = false
           sx={{ borderRadius: isHorizontal ? '10px 0 0 10px' : '10px 10px 0 0', objectFit: 'cover' }}
         />
         <Box sx={{ position: 'absolute', bottom: 10, right: 10 }}>
-          <IconButton onClick={hasSizes ? handleClickOpen : () => handleAddToCart()}>
+          <IconButton onClick={product.productType === ProductType.MULTIPLE_SIZES ? handleClickOpen : () => handleAddToCart(undefined, 1)}>
             <AddCircleIcon fontSize="large" />
           </IconButton>
         </Box>
       </Box>
       <CardContent sx={{ flex: isHorizontal ? 1 : 'none', display: 'flex', flexDirection: 'column', gap: 1 }}>
         <Typography variant="h6" fontWeight="bold">{product.name}</Typography>
-        <Typography variant="body2" sx={{ color: 'text.secondary' }}>{product.price} €</Typography>
+        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+          {product.productType === ProductType.SINGLE_PRICE
+            ? `${product.basePrice?.toFixed(2)} €`
+            : `À partir de ${product.sizes?.[0].price.toFixed(2)} €`}
+        </Typography>
         <Typography variant="body2" sx={{ color: 'text.secondary' }}>{product.description}</Typography>
       </CardContent>
-      {hasSizes && (
+      {product.productType === ProductType.MULTIPLE_SIZES && (
         <SizeDialog product={product} open={openDialog} onClose={handleCloseDialog} onConfirm={handleConfirmSize} />
       )}
     </Card>

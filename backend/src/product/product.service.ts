@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import * as mongoose from 'mongoose';
 import { Product } from 'src/schemas/product.schema';
@@ -38,4 +38,14 @@ export class ProductService {
         return updatedProduct;
       }
     
+   // ✅ Mettre à jour TOUS les produits
+  async updateAllProducts(updateData: Partial<Product>): Promise<{ modifiedCount: number }> {
+    try {
+      const result = await this.productModel.updateMany({}, { $set: updateData }).exec();
+      return { modifiedCount: result.modifiedCount };
+    } catch (error) {
+      throw new BadRequestException("Erreur lors de la mise à jour des produits");
+    }
+  }
+  
 }

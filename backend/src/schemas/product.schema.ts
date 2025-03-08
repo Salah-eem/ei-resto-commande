@@ -1,33 +1,41 @@
-import { Prop, Schema, SchemaFactory } from "@nestjs/mongoose";
-import { Category } from "./category.schema";
-import { Types } from "mongoose";
+import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
+import { Document, Types } from 'mongoose';
+import { Category } from './category.schema';
 
-@Schema({
-    timestamps: true
-})
-export class Product {
-    @Prop({ required: true})
-    name: string;
+export enum ProductType {
+  SINGLE_PRICE = 'single_price', // Produits sans tailles (ex: Boissons, Desserts)
+  MULTIPLE_SIZES = 'multiple_sizes', // Produits avec tailles (ex: Pizzas)
+}
 
-    @Prop({ required: false})
-    description: string;
+@Schema({ timestamps: true })
+export class Product extends Document {
+  @Prop({ required: true })
+  name: string;
 
-    @Prop({ required: true})
-    price: number;
+  @Prop({ required: true })
+  description: string;
 
-    // Utilisation de ObjectId pour la référence vers la collection Category
-    @Prop({ type: Types.ObjectId, ref: 'Category', required: true })
-    category: Category;
+  @Prop({ type: Types.ObjectId, ref: 'Category', required: true })
+  category: Category; // Référence vers la catégorie
 
-    @Prop({ required: true})
-    stock: number;
+  @Prop()
+  image_url: string;
 
-    @Prop({ required: false})
-    image_url: string;
+  @Prop({ required: true })
+  stock: number;
 
-    @Prop({ type: [String], default: [] })
-    sizes: string[];
+  @Prop({ required: true, enum: ProductType })
+  productType: ProductType; // Détermine si le produit a des tailles ou pas
+
+  @Prop({ required: false, default: null })
+  basePrice?: number; // Prix unique pour SINGLE_PRICE
+
+  @Prop({
+    type: [{ name: String, price: Number }],
+    required: false,
+    default: null, // Utilisé seulement si `productType === MULTIPLE_SIZES`
+  })
+  sizes?: { name: string; price: number }[];
 }
 
 export const ProductSchema = SchemaFactory.createForClass(Product);
-
