@@ -4,7 +4,7 @@ import { Card, CardContent, CardMedia, Typography, IconButton, Box } from '@mui/
 import AddCircleIcon from '@mui/icons-material/AddCircle';
 import { useDispatch } from 'react-redux';
 import { addToCart } from '@/store/slices/cartSlice';
-import { getUserId } from '@/utils/user'; // Import de la fonction userId
+import { getUserId } from '@/utils/user';
 import { Product } from "@/types/product";
 import SizeDialog from './SizeDialog';
 
@@ -19,8 +19,11 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isHorizontal = false
   const [openDialog, setOpenDialog] = useState(false);
   const [selectedSize, setSelectedSize] = useState<string | undefined>(undefined);
 
+  // ✅ Vérification si le produit a des tailles
+  const hasSizes = product.sizes && product.sizes.length > 0;
+
   useEffect(() => {
-    setUserId(getUserId()); // Définir le userId au chargement
+    setUserId(getUserId());
   }, []);
 
   const handleClickOpen = () => setOpenDialog(true);
@@ -33,7 +36,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isHorizontal = false
   };
 
   const handleAddToCart = (size?: string) => {
-    if (!userId) return; // Sécurité : vérifier que userId est bien défini
+    if (!userId) return;
 
     const cartItem = {
       userId,
@@ -71,7 +74,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isHorizontal = false
           sx={{ borderRadius: isHorizontal ? '10px 0 0 10px' : '10px 10px 0 0', objectFit: 'cover' }}
         />
         <Box sx={{ position: 'absolute', bottom: 10, right: 10 }}>
-          <IconButton onClick={product.hasSize ? handleClickOpen : () => handleAddToCart()}>
+          <IconButton onClick={hasSizes ? handleClickOpen : () => handleAddToCart()}>
             <AddCircleIcon fontSize="large" />
           </IconButton>
         </Box>
@@ -81,7 +84,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isHorizontal = false
         <Typography variant="body2" sx={{ color: 'text.secondary' }}>{product.price} €</Typography>
         <Typography variant="body2" sx={{ color: 'text.secondary' }}>{product.description}</Typography>
       </CardContent>
-      {product.hasSize && (
+      {hasSizes && (
         <SizeDialog product={product} open={openDialog} onClose={handleCloseDialog} onConfirm={handleConfirmSize} />
       )}
     </Card>

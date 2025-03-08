@@ -25,7 +25,8 @@ export class Product {
     @Prop({ required: false})
     image_url: string;
 
-   
+    @Prop({ type: [String], default: [] })
+    sizes: string[];
 }
 
 export const ProductSchema = SchemaFactory.createForClass(Product);

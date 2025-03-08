@@ -40,7 +40,7 @@ const CartDialog: React.FC<CartDialogProps> = ({ open, onClose }) => {
     if (quantity > 0) {
       dispatch(updateCartQuantity({ userId, productId, size, quantity }) as any);
     } else {
-      dispatch(removeFromCart({ userId, productId }) as any);
+      dispatch(removeFromCart({ userId, productId, size }) as any);
     }
   };
 
@@ -75,7 +75,7 @@ const CartDialog: React.FC<CartDialogProps> = ({ open, onClose }) => {
                       <AddIcon />
                     </IconButton>
                     <IconButton
-                      onClick={() => dispatch(removeFromCart({ userId, productId: item.productId }) as any)}
+                      onClick={() => dispatch(removeFromCart({ userId, productId: item.productId, size: item.size }) as any)}
                       color="error"
                     >
                       <DeleteIcon />
