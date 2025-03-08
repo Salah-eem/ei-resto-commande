@@ -1,60 +1,97 @@
-// CartDialog.tsx
 "use client";
-import React from 'react';
-import {
-  Dialog, DialogTitle, DialogContent, IconButton, Typography, Grid, Paper, Button, Box, Divider
-} from '@mui/material';
-import CloseIcon from '@mui/icons-material/Close';
-import AddIcon from '@mui/icons-material/Add';
-import RemoveIcon from '@mui/icons-material/Remove';
+import React, { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useDispatch, useSelector } from "react-redux";
+import { fetchCart, updateCartQuantity, removeFromCart } from "@/store/slices/cartSlice";
+import { RootState } from "@/store/store";
+import { Dialog, DialogTitle, DialogContent, IconButton, Typography, Grid, Paper, Button, Box } from "@mui/material";
+import CloseIcon from "@mui/icons-material/Close";
+import AddIcon from "@mui/icons-material/Add";
+import RemoveIcon from "@mui/icons-material/Remove";
+import DeleteIcon from "@mui/icons-material/Delete";
 
 interface CartDialogProps {
   open: boolean;
   onClose: () => void;
-  cartItems: any[];
-  onQuantityChange: (id: string, quantity: number) => void;
 }
 
-const CartDialog: React.FC<CartDialogProps> = ({ open, onClose, cartItems, onQuantityChange }) => {
+const CartDialog: React.FC<CartDialogProps> = ({ open, onClose }) => {
+  const router = useRouter();
+  const dispatch = useDispatch();
+  
+  // ✅ Récupération du `userId` depuis Redux
+  const userId = useSelector((state: RootState) => state.user.userId)!;
+  const cartItems = useSelector((state: RootState) => state.cart.items);
+
+  // ✅ Calcul du total
   const totalPrice = cartItems.reduce((total, item) => total + item.price * item.quantity, 0);
+
+  // ✅ Charger le panier uniquement si `open === true`
+  useEffect(() => {
+    if (open && userId) {
+      dispatch(fetchCart(userId) as any);
+    }
+  }, [open, userId, dispatch]);
+
+  // ✅ Fonction pour mettre à jour ou supprimer un produit
+  const handleQuantityChange = (productId: string, size: string | undefined, quantity: number) => {
+    if (!userId) return; // Sécurité si `userId` est absent
+
+    if (quantity > 0) {
+      dispatch(updateCartQuantity({ userId, productId, size, quantity }) as any);
+    } else {
+      dispatch(removeFromCart({ userId, productId }) as any);
+    }
+  };
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
-      <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <DialogTitle sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         Mon Panier
-        <IconButton onClick={onClose}><CloseIcon /></IconButton>
+        <IconButton onClick={onClose}>
+          <CloseIcon />
+        </IconButton>
       </DialogTitle>
+      
       <DialogContent dividers>
         {cartItems.length === 0 ? (
-          <Typography variant="body1" align="center">Votre panier est vide.</Typography>
+          <Typography align="center">Votre panier est vide.</Typography>
         ) : (
           <Grid container spacing={2}>
             {cartItems.map((item) => (
-              <Grid item xs={12} key={item.id}>
-                <Paper sx={{ p: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderRadius: 3, boxShadow: 2 }}>
+              <Grid item xs={12} key={`${item.productId}-${item.size || "default"}`}>
+                <Paper sx={{ p: 2, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <Box>
                     <Typography variant="h6">{item.name}</Typography>
-                    <Typography variant="body2">Prix : {item.price.toFixed(2)}€ x {item.quantity}</Typography>
+                    <Typography>Prix : {item.price.toFixed(2)}€ x {item.quantity}</Typography>
+                    {item.size && <Typography>Taille : {item.size}</Typography>}
                   </Box>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <IconButton size="small" onClick={() => onQuantityChange(item.id, Math.max(1, item.quantity - 1))}><RemoveIcon /></IconButton>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                    <IconButton onClick={() => handleQuantityChange(item.productId, item.size, item.quantity - 1)}>
+                      <RemoveIcon />
+                    </IconButton>
                     <Typography>{item.quantity}</Typography>
-                    <IconButton size="small" onClick={() => onQuantityChange(item.id, item.quantity + 1)}><AddIcon /></IconButton>
+                    <IconButton onClick={() => handleQuantityChange(item.productId, item.size, item.quantity + 1)}>
+                      <AddIcon />
+                    </IconButton>
+                    <IconButton
+                      onClick={() => dispatch(removeFromCart({ userId, productId: item.productId }) as any)}
+                      color="error"
+                    >
+                      <DeleteIcon />
+                    </IconButton>
                   </Box>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>{(item.price * item.quantity).toFixed(2)}€</Typography>
                 </Paper>
               </Grid>
             ))}
           </Grid>
         )}
-
-        {cartItems.length > 0 && (
-          <Box mt={4} sx={{ display: 'flex', justifyContent: 'flex-end', flexDirection: 'column' }}>
-            <Divider sx={{ mb: 2 }} />
-            <Typography variant="h6" sx={{ mb: 2 }}>Total : {totalPrice.toFixed(2)}€</Typography>
-            <Button variant="contained" color="primary" size="large">Passer à la commande</Button>
-          </Box>
-        )}
+        <Box sx={{ mt: 2, textAlign: "center" }}>
+          <Typography variant="h6">Total : {totalPrice.toFixed(2)}€</Typography>
+          <Button onClick={() => router.push("/cart")} variant="contained" sx={{ mt: 1 }}>
+            Voir le panier
+          </Button>
+        </Box>
       </DialogContent>
     </Dialog>
   );

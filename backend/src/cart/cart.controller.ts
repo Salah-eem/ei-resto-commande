@@ -1,35 +1,37 @@
-import { Controller, Post, Get, Body, Param, Patch, Delete, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, Patch, Delete, BadRequestException } from '@nestjs/common';
 import { CartService } from './cart.service';
-import { JwtGuard } from '../auth/guard/jwt.guard';
 
-
-@UseGuards(JwtGuard)
 @Controller('cart')
 export class CartController {
   constructor(private readonly cartService: CartService) {}
 
-  // ✅ Obtenir le panier d'un utilisateur
+  // ✅ Obtenir le panier d'un utilisateur ou invité
   @Get(':userId')
   async getCart(@Param('userId') userId: string) {
     return this.cartService.getOrCreateCart(userId);
   }
 
-  // ✅ Ajouter un article
+  // ✅ Ajouter un article au panier
   @Post(':userId/add')
   async addItem(@Param('userId') userId: string, @Body() item: any) {
+    console.log("📌 Produit reçu dans l'API :", item); // 🔍 Debug ici
+    if (!item.productId) {
+      throw new BadRequestException('❌ productId est requis.');
+    }
     return this.cartService.addItemToCart(userId, item);
   }
+  
 
-  // ✅ Mettre à jour la quantité
+  // ✅ Modifier la quantité d’un produit dans le panier
   @Patch(':userId/update')
   async updateQuantity(@Param('userId') userId: string, @Body() body: any) {
     const { productId, size, quantity } = body;
     return this.cartService.updateItemQuantity(userId, productId, size, quantity);
   }
 
-  // ✅ Vider le panier
-  @Delete(':userId/clear')
-  async clearCart(@Param('userId') userId: string) {
-    return this.cartService.clearCart(userId);
+  // ✅ Supprimer un article du panier
+  @Delete(':userId/:productId')
+  async removeItem(@Param('userId') userId: string, @Param('productId') productId: string) {
+    return this.cartService.removeItemFromCart(userId, productId);
   }
 }

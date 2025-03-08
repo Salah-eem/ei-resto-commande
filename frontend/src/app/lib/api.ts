@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { Product } from '@/types';
+import { Product } from "@/types/product";
 
 const baseUrl = 'http://localhost:3001';
 

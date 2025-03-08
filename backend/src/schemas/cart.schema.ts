@@ -1,27 +1,33 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
 
-@Schema({ timestamps: true })
-export class Cart {
-  @Prop({ required: true })
-  userId: string; // L'ID de l'utilisateur associé au panier
+export type CartDocument = Cart & Document;
 
-  @Prop([
-    {
-      productId: String,
-      name: String,
-      size: String,
-      price: Number,
-      quantity: Number,
-    }
-  ])
-  items: Array<{
-    productId: string;
-    name: string;
-    size: string;
-    price: number;
-    quantity: number;
-  }>;
+@Schema()
+export class CartItem {
+  @Prop({ required: true })
+  productId: string;  // ⚠️ Assure-toi que ce champ est bien reçu
+
+  @Prop({ required: true })
+  name: string;
+
+  @Prop({ required: true })
+  price: number;
+
+  @Prop({ required: true })
+  quantity: number;
+
+  @Prop()
+  size?: string; // Optionnel
+}
+
+@Schema({ timestamps: true }) // Pour suivre `createdAt` et `updatedAt`
+export class Cart {
+  @Prop({ required: true, unique: true })
+  userId: string;
+
+  @Prop({ type: [CartItem], default: [] })
+  items: CartItem[];
 }
 
 export const CartSchema = SchemaFactory.createForClass(Cart);

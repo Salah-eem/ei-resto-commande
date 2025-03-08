@@ -1,11 +1,12 @@
-// ProductCard.tsx
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardMedia, Typography, IconButton, Box } from '@mui/material';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
-import { Product } from '@/types';
+import { useDispatch } from 'react-redux';
+import { addToCart } from '@/store/slices/cartSlice';
+import { getUserId } from '@/utils/user'; // Import de la fonction userId
+import { Product } from "@/types/product";
 import SizeDialog from './SizeDialog';
-
 
 interface ProductCardProps {
   product: Product;
@@ -13,12 +14,40 @@ interface ProductCardProps {
 }
 
 const ProductCard: React.FC<ProductCardProps> = ({ product, isHorizontal = false }) => {
+  const dispatch = useDispatch();
+  const [userId, setUserId] = useState<string | null>(null);
   const [openDialog, setOpenDialog] = useState(false);
-  const [selectedSize, setSelectedSize] = useState('regular');
+  const [selectedSize, setSelectedSize] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    setUserId(getUserId()); // Définir le userId au chargement
+  }, []);
 
   const handleClickOpen = () => setOpenDialog(true);
   const handleCloseDialog = () => setOpenDialog(false);
-  const handleConfirmSize = (size: string) => setSelectedSize(size);
+
+  const handleConfirmSize = (size: string) => {
+    setSelectedSize(size);
+    handleAddToCart(size);
+    handleCloseDialog();
+  };
+
+  const handleAddToCart = (size?: string) => {
+    if (!userId) return; // Sécurité : vérifier que userId est bien défini
+
+    const cartItem = {
+      userId,
+      item: {
+        productId: product._id,
+        name: product.name,
+        price: product.price,
+        quantity: 1,
+        size: size || undefined,
+      },
+    };
+    console.log('Adding to cart:', cartItem);
+    dispatch(addToCart(cartItem) as any);
+  };
 
   return (
     <Card
@@ -37,12 +66,12 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isHorizontal = false
           component="img"
           height={isHorizontal ? 120 : 160}
           width={isHorizontal ? 100 : '100%'}
-          image={`http://localhost:3001/${product.image_url}`}
+          image={product.image_url ? `http://localhost:3001/${product.image_url}` : '/placeholder.png'}
           alt={product.name}
           sx={{ borderRadius: isHorizontal ? '10px 0 0 10px' : '10px 10px 0 0', objectFit: 'cover' }}
         />
         <Box sx={{ position: 'absolute', bottom: 10, right: 10 }}>
-          <IconButton onClick={handleClickOpen}>
+          <IconButton onClick={product.hasSize ? handleClickOpen : () => handleAddToCart()}>
             <AddCircleIcon fontSize="large" />
           </IconButton>
         </Box>
@@ -52,10 +81,11 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isHorizontal = false
         <Typography variant="body2" sx={{ color: 'text.secondary' }}>{product.price} €</Typography>
         <Typography variant="body2" sx={{ color: 'text.secondary' }}>{product.description}</Typography>
       </CardContent>
-      <SizeDialog product={product} open={openDialog} onClose={handleCloseDialog} onConfirm={handleConfirmSize} />
+      {product.hasSize && (
+        <SizeDialog product={product} open={openDialog} onClose={handleCloseDialog} onConfirm={handleConfirmSize} />
+      )}
     </Card>
   );
 };
 
 export default ProductCard;
-
