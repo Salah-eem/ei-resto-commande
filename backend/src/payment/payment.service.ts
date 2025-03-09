@@ -11,9 +11,11 @@ import { Order, OrderDocument, OrderStatus } from 'src/schemas/order.schema';
 export class PaymentService {
     stripe: Stripe;
     private readonly STRIPE_SECRET_KEY = this.config.get('STRIPE_SECRET_KEY');
+    readonly STRIPE_WEBHOOK_SECRET = this.config.get('STRIPE_WEBHOOK_SECRET');
+    
     private readonly PAYPAL_CLIENT_ID = this.config.get('PAYPAL_CLIENT_ID');
     private readonly PAYPAL_SECRET = this.config.get('PAYPAL_SECRET');
-    readonly STRIPE_WEBHOOK_SECRET = this.config.get('STRIPE_WEBHOOK_SECRET');
+    private readonly PAYPAL_MODE = this.config.get('PAYPAL_MODE');
 
     constructor(
       private config: ConfigService,
@@ -44,6 +46,19 @@ export class PaymentService {
       return { sessionId: session.id };
     }
 
+    // ✅ Gérer le Webhook Stripe après paiement
+    async handleStripeWebhook(event: Stripe.Event) {
+      if (event.type === 'checkout.session.completed') {
+        const session = event.data.object as Stripe.Checkout.Session;
+        console.log('✅ Paiement confirmé pour la session:', session.id);
+
+        if (session.metadata && session.metadata.userId) {
+          await this.createOrder(session.metadata.userId);
+          await this.clearCart(session.metadata.userId);
+        }
+      }
+    }
+
     // ✅ Capturer un paiement PayPal
     async processPayPalPayment(userId: string, cartItems: any[], totalPrice: number) {
       const auth = Buffer.from(`${this.PAYPAL_CLIENT_ID}:${this.PAYPAL_SECRET}`).toString('base64');
@@ -69,19 +84,6 @@ export class PaymentService {
       return { approvalUrl: orderData.links.find((link) => link.rel === 'approve').href };
     }
 
-    // ✅ Gérer le Webhook Stripe après paiement
-    async handleStripeWebhook(event: Stripe.Event) {
-      if (event.type === 'checkout.session.completed') {
-        const session = event.data.object as Stripe.Checkout.Session;
-        console.log('✅ Paiement confirmé pour la session:', session.id);
-
-        if (session.metadata && session.metadata.userId) {
-          await this.createOrder(session.metadata.userId);
-          await this.clearCart(session.metadata.userId);
-        }
-      }
-    }
-
     // ✅ Capturer le paiement PayPal après confirmation
     async capturePayPalPayment(orderId: string, userId: string) {
       const auth = Buffer.from(`${this.PAYPAL_CLIENT_ID}:${this.PAYPAL_SECRET}`).toString('base64');
@@ -94,7 +96,8 @@ export class PaymentService {
 
       if (data.status === 'COMPLETED') {
         console.log('✅ Paiement PayPal réussi:', data);
-        await this.updateOrderStatus(orderId, 'paid');
+        // await this.updateOrderStatus(orderId, 'paid');
+        await this.createOrder(userId);
         await this.clearCart(userId);
         return { success: true };
       } else {

@@ -94,7 +94,7 @@ const CartPage: React.FC = () => {
         window.location.href = response.data.approvalUrl;
       } else {
         // ✅ Paiement en espèces
-        await axios.post("http://localhost:3001/orders", {
+        await axios.post("http://localhost:3001/order", {
           userId,
           cartItems,
           totalPrice,
