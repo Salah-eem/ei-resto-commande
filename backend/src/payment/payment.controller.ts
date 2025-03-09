@@ -2,7 +2,7 @@ import { Controller, Post, Body, BadRequestException, Req, Res } from '@nestjs/c
 import { Request, Response } from 'express';
 import { PaymentService } from './payment.service';
 
-@Controller('payments')
+@Controller('payment')
 export class PaymentController {
   constructor(private readonly paymentService: PaymentService) {}
 
@@ -52,4 +52,11 @@ export class PaymentController {
     const { orderId, userId } = body;
     return this.paymentService.capturePayPalPayment(orderId, userId);
   }
+
+  @Post("cash")
+  async processCashPayment(@Body() body: any) {
+    const { userId, cartItems, totalAmount, orderType } = body;
+    return this.paymentService.processCashPayment(userId, cartItems, totalAmount, orderType);
+  } 
+
 }

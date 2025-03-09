@@ -49,7 +49,7 @@ const CartPage: React.FC = () => {
   }, [userId, dispatch, products.length]);
 
   const subtotal = cartItems.reduce((total, item) => total + item.price * item.quantity, 0);
-  const totalPrice = orderType === "delivery" ? subtotal + DELIVERY_FEE : subtotal;
+  const totalAmount = orderType === "delivery" ? subtotal + DELIVERY_FEE : subtotal;
 
   const handleQuantityChange = (productId: string, size: string | undefined, quantity: number) => {
     if (!userId) return;
@@ -78,30 +78,35 @@ const CartPage: React.FC = () => {
       if (paymentMethod === "card") {
         // ✅ Paiement via Stripe
         const stripe = await loadStripe(STRIPE_PUBLIC_KEY);
-        const response = await axios.post("http://localhost:3001/payments/stripe", {
+        const response = await axios.post("http://localhost:3001/payment/stripe", {
           userId,
           cartItems,
-          totalPrice,
+          totalAmount,
         });
         await stripe?.redirectToCheckout({ sessionId: response.data.sessionId });
       } else if (paymentMethod === "paypal") {
         // ✅ Paiement via PayPal
-        const response = await axios.post("http://localhost:3001/payments/paypal", {
+        const response = await axios.post("http://localhost:3001/payment/paypal", {
           userId,
           cartItems,
-          totalPrice,
+          totalAmount,
         });
         window.location.href = response.data.approvalUrl;
-      } else {
-        // ✅ Paiement en espèces
-        await axios.post("http://localhost:3001/order", {
+      } else if (paymentMethod === "cash") {
+        // ✅ Paiement en espèces (Cash)
+        const response = await axios.post("http://localhost:3001/payment/cash", {
           userId,
           cartItems,
-          totalPrice,
-          paymentMethod: "cash",
+          totalAmount,
+          orderType,
         });
-        dispatch(clearCart(userId) as any);
-        router.push("/order-confirmation");
+  
+        if (response.data.success) {
+          dispatch(clearCart(userId) as any); // 🛒 Vider le panier
+          router.push("/order-confirmation?success=true"); // 🔄 Redirection vers confirmation
+        } else {
+          setErrorPayment("Erreur lors de la validation de votre commande.");
+        }
       }
     } catch (err) {
       setErrorPayment("Erreur lors du paiement, veuillez réessayer.");
@@ -168,7 +173,7 @@ const CartPage: React.FC = () => {
                   </ToggleButton>
                 </ToggleButtonGroup>
 
-                <Typography variant="h6">Total : {totalPrice.toFixed(2)}€</Typography>
+                <Typography variant="h6">Total : {totalAmount.toFixed(2)}€</Typography>
 
                 {/* ✅ Sélection du mode de paiement */}
                 <RadioGroup value={paymentMethod} onChange={handlePaymentChange}>

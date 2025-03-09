@@ -122,6 +122,24 @@ export class PaymentService {
       return updatedOrder;
     }
 
+    async processCashPayment(userId: string, cartItems: any[], totalAmount: number, orderType: string) {
+      console.log("🛠️ Création de la commande en espèces pour l'utilisateur", userId);
+    
+      const newOrder = await this.orderModel.create({
+        userId,
+        items: cartItems,
+        totalAmount: totalAmount,
+        status: "pending", // En attente de paiement
+        orderType,
+        paymentMethod: "cash",
+      });
+    
+      await this.clearCart(userId); // 🛒 Vider le panier après la commande
+    
+      return { success: true, orderId: newOrder._id };
+    }
+    
+
     // ✅ Créer une commande après paiement réussi
     async createOrder(userId: string) {
       const cart = await this.cartModel.findOne({ userId });
