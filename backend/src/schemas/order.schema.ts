@@ -1,36 +1,41 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document, Types } from 'mongoose';
+import { Document } from 'mongoose';
 
 export type OrderDocument = Order & Document;
 
-@Schema({ timestamps: true })
-export class Order {
-  @Prop({ type: Types.ObjectId, required: true, ref: 'User' })
-  userId: Types.ObjectId;
 
-  @Prop({ type: [{ productId: String, name: String, price: Number, quantity: Number, size: String }] })
-  items: {
-    productId: string;
-    name: string;
-    price: number;
-    quantity: number;
-    size?: string;
-  }[];
+export enum OrderStatus {
+  PENDING = 'pending',
+  PAID = 'paid',
+  SHIPPED = 'shipped',
+  DELIVERED = 'delivered',
+  CANCELED = 'canceled',
+}
+
+@Schema({ timestamps: true })
+export class Order extends Document {
+  @Prop({ required: true })
+  userId: string;
+
+  @Prop({
+    type: [
+      {
+        productId: { type: String, required: true },
+        name: { type: String, required: true },
+        quantity: { type: Number, required: true },
+        price: { type: Number, required: true },
+        size: { type: String, required: false },
+        image_url: { type: String, required: false },
+      },
+    ],
+  })
+  items: Record<string, any>[];
 
   @Prop({ required: true })
   totalAmount: number;
 
-  @Prop({ default: 'pending', enum: ['pending', 'paid', 'shipped', 'delivered', 'cancelled'] })
-  status: string;
-
-  @Prop({ type: String, enum: ['card', 'paypal'], required: true })
-  paymentMethod: string;
-
-  @Prop({ default: false })
-  isPaid: boolean;
-
-  @Prop({ default: Date.now })
-  paidAt?: Date;
+  @Prop({ type: String, enum: Object.values(OrderStatus), default: OrderStatus.PENDING })
+  status: OrderStatus;
 }
 
 export const OrderSchema = SchemaFactory.createForClass(Order);

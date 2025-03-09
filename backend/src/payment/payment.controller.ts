@@ -1,4 +1,5 @@
 import { Controller, Post, Body, BadRequestException, Req, Res } from '@nestjs/common';
+import { Request, Response } from 'express';
 import { PaymentService } from './payment.service';
 
 @Controller('payments')

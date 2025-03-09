@@ -22,7 +22,7 @@ import AccountBalanceWalletIcon from "@mui/icons-material/AccountBalanceWallet";
 import { loadStripe } from "@stripe/stripe-js";
 
 const DELIVERY_FEE = 3.99;
-const STRIPE_PUBLIC_KEY = "pk_test_XXXXXXXXXXXXXXXXXXXXXXXX"; // Remplace avec ta clé Stripe
+const STRIPE_PUBLIC_KEY = "pk_test_51R0USrC8GycP5SjONID25lxAZCuvL4YNYgIHuSVoFiPpmGYJVa1cofllPRvnvWcQ4yhxSnXxLKDrppCyHloQOmcN001VedX7ka"; // Remplace avec ta clé Stripe
 const PAYPAL_CLIENT_ID = "your-paypal-client-id"; // Remplace avec ton client ID PayPal
 
 const CartPage: React.FC = () => {

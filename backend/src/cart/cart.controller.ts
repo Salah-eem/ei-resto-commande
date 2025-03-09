@@ -14,7 +14,6 @@ export class CartController {
   // ✅ Ajouter un article au panier
   @Post(':userId/add')
   async addItem(@Param('userId') userId: string, @Body() item: any) {
-    console.log("📌 Produit reçu dans l'API :", item); // 🔍 Debug ici
     if (!item.productId) {
       throw new BadRequestException('❌ productId est requis.');
     }

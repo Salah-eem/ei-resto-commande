@@ -25,7 +25,7 @@ const Header = () => {
             <Link href="/menu">
               <Button sx={{ color: "black", fontWeight: "bold" }}>Menu</Button>
             </Link>
-            <Link href="/orders">
+            <Link href="/my-orders">
               <Button sx={{ color: "black", fontWeight: "bold" }}>Commandes</Button>
             </Link>
             <Link href="/login">
