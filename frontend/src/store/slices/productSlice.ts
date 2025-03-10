@@ -2,7 +2,8 @@ import { Product } from "@/types/product";
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import axios from "axios";
 
-const API_URL = "http://localhost:3001/product"; // URL backend
+// const API_URL = "http://localhost:3001/product"; // URL backend
+const API_URL = process.env.API_URL!+"/product";
 
 interface ProductState {
   items: Product[];

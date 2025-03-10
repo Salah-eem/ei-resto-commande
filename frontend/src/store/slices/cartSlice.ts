@@ -2,7 +2,9 @@ import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import axios from "axios";
 import { CartItem } from "@/types/cartItem";
 
-const API_URL = "http://localhost:3001/cart"; // URL backend
+// const API_URL = "http://localhost:3001/cart"; // URL backend
+const API_URL = process.env.API_URL!+"/cart";
+
 
 interface CartState {
   items: CartItem[];
