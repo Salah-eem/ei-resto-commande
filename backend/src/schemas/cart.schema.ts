@@ -6,7 +6,7 @@ export type CartDocument = Cart & Document;
 @Schema()
 export class CartItem {
   @Prop({ required: true })
-  productId: string;  // ⚠️ Assure-toi que ce champ est bien reçu
+  productId: string; 
 
   @Prop({ required: true })
   name: string;
@@ -18,7 +18,9 @@ export class CartItem {
   quantity: number;
 
   @Prop()
-  size?: string; // Optionnel
+  size?: string; // Optionnel  
+  @Prop()
+  image_url?: string; // Optionnel
 }
 
 @Schema({ timestamps: true }) // Pour suivre `createdAt` et `updatedAt`

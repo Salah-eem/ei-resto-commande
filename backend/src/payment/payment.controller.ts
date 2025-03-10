@@ -1,6 +1,7 @@
-import { Controller, Post, Body, BadRequestException, Req, Res } from '@nestjs/common';
+import { Controller, Post, Body, BadRequestException, Req, Res, RawBodyRequest } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { PaymentService } from './payment.service';
+import Stripe from 'stripe';
 
 @Controller('payment')
 export class PaymentController {
@@ -9,11 +10,11 @@ export class PaymentController {
   // ✅ Paiement via Stripe
   @Post('stripe')
   async createStripePayment(@Body() body: any) {
-    const { userId, cartItems, totalPrice } = body;
-    if (!userId || !cartItems || !totalPrice) {
+    const { userId, cartItems, totalAmount, orderType } = body;
+    if (!userId || !cartItems || !totalAmount || !orderType) {
       throw new BadRequestException('Informations de paiement invalides');
     }
-    return this.paymentService.processStripePayment(userId, cartItems, totalPrice);
+    return this.paymentService.processStripePayment(userId, cartItems, totalAmount, orderType);
   }
 
    // ✅ Webhook Stripe pour confirmer le paiement
@@ -28,7 +29,10 @@ export class PaymentController {
  
      try {
        const event = this.paymentService.stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
-       await this.paymentService.handleStripeWebhook(event);
+       const object = event.data.object as Stripe.Checkout.Session;
+       const orderType = object.metadata?.orderType || 'pickup';
+
+       await this.paymentService.handleStripeWebhook(event, orderType);
        res.json({ received: true });
      } catch (err) {
        console.error('❌ Erreur Webhook:', err);
@@ -39,24 +43,24 @@ export class PaymentController {
   // ✅ Paiement via PayPal
   @Post('paypal')
   async createPayPalPayment(@Body() body: any) {
-    const { userId, cartItems, totalPrice } = body;
-    if (!userId || !cartItems || !totalPrice) {
+    const { userId, cartItems, totalAmount, orderType } = body;
+    if (!userId || !cartItems || !totalAmount || !orderType) {
       throw new BadRequestException('Informations de paiement invalides');
     }
-    return this.paymentService.processPayPalPayment(userId, cartItems, totalPrice);
+    return this.paymentService.processPayPalPayment(userId, cartItems, totalAmount, orderType);
   }
 
   // ✅ Capture du paiement PayPal
   @Post('paypal/capture')
   async capturePayPal(@Body() body) {
-    const { orderId, userId } = body;
-    return this.paymentService.capturePayPalPayment(orderId, userId);
+    const { orderId, userId, orderType } = body;
+    return this.paymentService.capturePayPalPayment(orderId, userId, orderType);
   }
 
   @Post("cash")
   async processCashPayment(@Body() body: any) {
     const { userId, cartItems, totalAmount, orderType } = body;
-    return this.paymentService.processCashPayment(userId, cartItems, totalAmount, orderType);
+    return this.paymentService.processCashPayment(userId, orderType);
   } 
 
 }

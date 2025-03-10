@@ -82,6 +82,7 @@ const CartPage: React.FC = () => {
           userId,
           cartItems,
           totalAmount,
+          orderType,
         });
         await stripe?.redirectToCheckout({ sessionId: response.data.sessionId });
       } else if (paymentMethod === "paypal") {
@@ -90,6 +91,7 @@ const CartPage: React.FC = () => {
           userId,
           cartItems,
           totalAmount,
+          orderType,
         });
         window.location.href = response.data.approvalUrl;
       } else if (paymentMethod === "cash") {

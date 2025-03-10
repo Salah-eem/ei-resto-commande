@@ -22,7 +22,7 @@ const Header = () => {
             <Image src="/logo.png" alt="RestoCommande Logo" width={120} height={40} />
           </Link>
           <Box>
-            <Link href="/menu">
+            <Link href="/">
               <Button sx={{ color: "black", fontWeight: "bold" }}>Menu</Button>
             </Link>
             <Link href="/my-orders">

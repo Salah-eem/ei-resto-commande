@@ -5,7 +5,8 @@ import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Cart, CartDocument } from 'src/schemas/cart.schema';
-import { Order, OrderDocument, OrderStatus } from 'src/schemas/order.schema';
+import { Order, OrderDocument, OrderStatus, OrderType, PaymentMethod, PaymentStatus } from 'src/schemas/order.schema';
+import { OrderService } from 'src/order/order.service';
 
 @Injectable()
 export class PaymentService {
@@ -19,14 +20,15 @@ export class PaymentService {
 
     constructor(
       private config: ConfigService,
+      private orderService: OrderService,
       @InjectModel(Order.name) private orderModel: Model<OrderDocument>,
       @InjectModel(Cart.name) private cartModel: Model<CartDocument>,
     ) {
       this.stripe = new Stripe(this.STRIPE_SECRET_KEY, { apiVersion: '2025-02-24.acacia' });
     }
 
-    // ✅ Créer un paiement Stripe
-    async processStripePayment(userId: string, cartItems: any[], totalPrice: number) {
+    // Créer un paiement Stripe
+    async processStripePayment(userId: string, cartItems: any[], totalAmount: number, orderType: string) {
       const session = await this.stripe.checkout.sessions.create({
         payment_method_types: ['card'],
         line_items: cartItems.map((item) => ({
@@ -38,7 +40,7 @@ export class PaymentService {
           quantity: item.quantity,
         })),
         mode: 'payment',
-        metadata: { userId },
+        metadata: { userId, orderType },
         success_url: `http://localhost:3000/order-confirmation?success=true`,
         cancel_url: `http://localhost:3000/cart?canceled=true`,
       });
@@ -46,24 +48,23 @@ export class PaymentService {
       return { sessionId: session.id };
     }
 
-    // ✅ Gérer le Webhook Stripe après paiement
-    async handleStripeWebhook(event: Stripe.Event) {
+    // Gérer le Webhook Stripe après paiement
+    async handleStripeWebhook(event: Stripe.Event, orderType: string) {
       if (event.type === 'checkout.session.completed') {
         const session = event.data.object as Stripe.Checkout.Session;
-        console.log('✅ Paiement confirmé pour la session:', session.id);
 
         if (session.metadata && session.metadata.userId) {
-          await this.createOrder(session.metadata.userId);
+          await this.orderService.createOrder(session.metadata.userId, orderType, PaymentMethod.CARD, PaymentStatus.COMPLETED);
           await this.clearCart(session.metadata.userId);
         }
       }
     }
 
-    // ✅ Capturer un paiement PayPal
-    async processPayPalPayment(userId: string, cartItems: any[], totalPrice: number) {
+    // Capturer un paiement PayPal
+    async processPayPalPayment(userId: string, cartItems: any[], totalAmount: number, orderType: string) {
       const auth = Buffer.from(`${this.PAYPAL_CLIENT_ID}:${this.PAYPAL_SECRET}`).toString('base64');
 
-      // 1️⃣ Obtenir un token PayPal
+      // Obtenir un token PayPal
       const { data: tokenData } = await axios.post(
         'https://api-m.sandbox.paypal.com/v1/oauth2/token',
         'grant_type=client_credentials',
@@ -71,21 +72,21 @@ export class PaymentService {
       );
       const accessToken = tokenData.access_token;
 
-      // 2️⃣ Créer une commande PayPal
+      // Créer une commande PayPal
       const { data: orderData } = await axios.post(
         'https://api-m.sandbox.paypal.com/v2/checkout/orders',
         {
           intent: 'CAPTURE',
-          purchase_units: [{ amount: { currency_code: 'EUR', value: totalPrice.toFixed(2) } }],
+          purchase_units: [{ amount: { currency_code: 'EUR', value: totalAmount.toFixed(2) } }],
         },
         { headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' } },
       );
 
-      return { approvalUrl: orderData.links.find((link) => link.rel === 'approve').href };
+      return { approvalUrl: orderData.links.find((link) => link.rel === 'approve').href, orderType };
     }
 
-    // ✅ Capturer le paiement PayPal après confirmation
-    async capturePayPalPayment(orderId: string, userId: string) {
+    // Capturer le paiement PayPal après confirmation
+    async capturePayPalPayment(orderId: string, userId: string, orderType: string) {
       const auth = Buffer.from(`${this.PAYPAL_CLIENT_ID}:${this.PAYPAL_SECRET}`).toString('base64');
 
       const { data } = await axios.post(
@@ -95,9 +96,8 @@ export class PaymentService {
       );
 
       if (data.status === 'COMPLETED') {
-        console.log('✅ Paiement PayPal réussi:', data);
-        // await this.updateOrderStatus(orderId, 'paid');
-        await this.createOrder(userId);
+        console.log('PayPal payment succeeded:', data);
+        await this.orderService.createOrder(userId, orderType, PaymentMethod.PAYPAL, PaymentStatus.COMPLETED);
         await this.clearCart(userId);
         return { success: true };
       } else {
@@ -105,63 +105,36 @@ export class PaymentService {
       }
     }
 
-    // ✅ Mettre à jour la commande après paiement
-    async updateOrderStatus(orderId: string, status: string): Promise<Order> {
-      console.log(`🔄 Mise à jour de la commande ${orderId} avec le statut: ${status}`);
-
+    // Mettre à jour la commande après paiement
+    async updateOrderStatus(orderId: string, paymentStatus: string): Promise<Order> {
       const updatedOrder = await this.orderModel.findByIdAndUpdate(
         orderId,
-        { status },
+        { paymentStatus },
         { new: true },
       );
 
       if (!updatedOrder) {
-        throw new Error(`❌ Commande ${orderId} non trouvée`);
+        throw new Error(`Order ${orderId} not found`);
       }
 
       return updatedOrder;
     }
 
-    async processCashPayment(userId: string, cartItems: any[], totalAmount: number, orderType: string) {
-      console.log("🛠️ Création de la commande en espèces pour l'utilisateur", userId);
-    
-      const newOrder = await this.orderModel.create({
-        userId,
-        items: cartItems,
-        totalAmount: totalAmount,
-        status: "pending", // En attente de paiement
-        orderType,
-        paymentMethod: "cash",
-      });
-    
-      await this.clearCart(userId); // 🛒 Vider le panier après la commande
+    async processCashPayment(userId: string, orderType: string) {    
+      const newOrder = await this.createOrder(userId, orderType, PaymentMethod.CASH);
+      await this.clearCart(userId); // Vider le panier après la commande
     
       return { success: true, orderId: newOrder._id };
     }
     
 
-    // ✅ Créer une commande après paiement réussi
-    async createOrder(userId: string) {
-      const cart = await this.cartModel.findOne({ userId });
-
-      if (!cart || cart.items.length === 0) {
-        throw new BadRequestException("Le panier est vide.");
-      }
-
-      const order = new this.orderModel({
-        userId,
-        items: cart.items,
-        totalAmount: cart.items.reduce((total, item) => total + item.price * item.quantity, 0),
-        status: OrderStatus.PAID,
-      });
-
-      await order.save();
-      console.log(`📦 Commande ${order._id} créée pour l'utilisateur ${userId}`);
+    // Créer une commande après paiement réussi
+    async createOrder(userId: string, orderType: string, paymentMethod: string, paymentStatus: string = PaymentStatus.PENDING) {
+      return this.orderService.createOrder(userId, orderType, paymentMethod, paymentStatus);
     }
 
     // ✅ Vider le panier après paiement
     async clearCart(userId: string) {
       await this.cartModel.findOneAndUpdate({ userId }, { items: [] });
-      console.log(`🧹 Suppression du panier de l'utilisateur ${userId}`);
     }
 }

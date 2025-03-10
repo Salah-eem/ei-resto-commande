@@ -43,7 +43,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isHorizontal = false
         price: product.productType === ProductType.SINGLE_PRICE ? product.basePrice! : product.sizes?.find(s => s.name === size)?.price || 0,
         quantity,
         size: size || undefined,
-        image: product.image_url,
+        image_url: product.image_url,
         category: product.category,
       },
     };
