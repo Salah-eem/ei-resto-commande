@@ -1,51 +1,60 @@
-'use client';
-import React, { useEffect, useState } from 'react';
-import { Box, Typography, Grid, CircularProgress } from '@mui/material';
-import ProductCard from './ProductCard';
-import CategoryNav from './CategoryNav';
-import { Product } from '@/types';
-import { getCategories } from '@/app/lib/api';
-import { Category } from '@/types/category';
+"use client";
+import React, { useEffect, useState } from "react";
+import { Box, Typography, Grid, CircularProgress, Alert } from "@mui/material";
+import { useSelector, useDispatch } from "react-redux";
+import { fetchProducts } from "@/store/slices/productSlice";
+import { fetchCategories } from "@/store/slices/categorySlice";
+import { RootState } from "@/store/store";
+import ProductCard from "./ProductCard";
+import CategoryNav from "./CategoryNav";
 
-interface ProductListProps {
-  allProducts: Product[];
-}
-//const categories = await getCategories();
+const ProductList: React.FC = () => {
+  const dispatch = useDispatch();
+  const { items: products, loading: loadingProducts, error: errorProducts } = useSelector(
+    (state: RootState) => state.products
+  );
+  const { items: categories, loading: loadingCategories, error: errorCategories } = useSelector(
+    (state: RootState) => state.categories
+  );
 
-const ProductList: React.FC<ProductListProps> = ({ allProducts }) => {
-  //const [selectedCategory, setSelectedCategory] = useState(categories[0]);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
-  // Filtrer les produits par catégorie
-  //const filteredProducts = allProducts.filter((product) => product.category.name === selectedCategory.name);
-
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
-  const [loading, setLoading] = useState(true);
-
+  // ✅ Ne lance les requêtes qu'une seule fois si les données ne sont pas déjà présentes
   useEffect(() => {
-    const fetchCategories = async () => {
-      try {
-        const categories: Category[] = await getCategories();
-        setCategories(categories);
-        setSelectedCategory(categories[0]);
-      } catch (error) {
-        console.error('Erreur lors du chargement des catégories:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchCategories();
-  }, []);
+    if (products.length === 0) {
+      dispatch(fetchProducts() as any);
+    }
+    if (categories.length === 0) {
+      dispatch(fetchCategories() as any);
+    }
+  }, [dispatch]);
 
-  if (loading) {
+  // ✅ Sélectionne la première catégorie une seule fois après le chargement
+  useEffect(() => {
+    if (categories.length > 0 && !selectedCategory) {
+      setSelectedCategory(categories[0]._id);
+    }
+  }, [categories, selectedCategory]);
+
+  if (loadingProducts || loadingCategories) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
+      <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", height: "50vh" }}>
         <CircularProgress />
       </Box>
     );
   }
 
-  const filteredProducts = allProducts.filter(product => product.category.name === selectedCategory!.name);
+  if (errorProducts || errorCategories) {
+    return (
+      <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", height: "50vh" }}>
+        <Alert severity="error">{errorProducts || errorCategories}</Alert>
+      </Box>
+    );
+  }
+
+  const filteredProducts = selectedCategory
+    ? products.filter((product) => product.category._id === selectedCategory)
+    : products;
 
   return (
     <Box sx={{ p: 2 }}>
@@ -65,8 +74,8 @@ const ProductList: React.FC<ProductListProps> = ({ allProducts }) => {
           px: 2,
         }}
       >
-        {allProducts.map((product) => (
-          <Box key={product._id} sx={{ scrollSnapAlign: 'start' }}>
+        {products.map((product) => (
+          <Box key={product._id} sx={{ scrollSnapAlign: 'start', minHeight: 340 }}>
             <ProductCard product={product} isHorizontal={false} /> {/* Affichage vertical */}
           </Box>
         ))}
@@ -87,14 +96,16 @@ const ProductList: React.FC<ProductListProps> = ({ allProducts }) => {
           py: 1,
         }}
       >
-        <CategoryNav categories={categories} onCategoryChange={setSelectedCategory} />
+        <CategoryNav categories={categories} onCategoryChange={(category) => setSelectedCategory(category._id)} />
       </Box>
 
       {/* Liste des produits filtrés */}
       <Grid container spacing={2}>
         {filteredProducts.map((product) => (
-          <Grid item xs={12} sm={6} key={product._id}> {/* Deux cartes par ligne */}
-            <ProductCard product={product} isHorizontal={true} /> {/* Affichage horizontal */}
+          <Grid item xs={12} sm={6} key={product._id}>
+            <Box sx={{ minHeight: 140 }}>
+              <ProductCard product={product} isHorizontal={true} /> {/* Affichage horizontal */}
+            </Box>
           </Grid>
         ))}
       </Grid>

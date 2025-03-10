@@ -1,34 +1,32 @@
-//HomePage.tsx
-'use client';
-import React, { useState, useEffect } from 'react';
-import { Box, CircularProgress } from '@mui/material';
-import { getProducts } from './lib/api';
-import ProductList from '@/components/ProductList';
-import DeliveryToggle from '@/components/DeliveryToggle';
-import { Product } from '@/types';
+"use client";
+import React, { useEffect } from "react";
+import { Box, CircularProgress, Alert } from "@mui/material";
+import { useDispatch, useSelector } from "react-redux";
+import { fetchProducts } from "@/store/slices/productSlice";
+import { RootState } from "@/store/store";
+import ProductList from "@/components/ProductList";
+import DeliveryToggle from "@/components/DeliveryToggle";
 
 const HomePage = () => {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
+  const dispatch = useDispatch();
+  const { loading, error } = useSelector((state: RootState) => state.products);
 
   useEffect(() => {
-    const fetchProducts = async () => {
-      try {
-        const data = await getProducts();
-        setProducts(data);
-      } catch (error) {
-        console.error('Erreur de chargement des produits:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchProducts();
-  }, []);
+    dispatch(fetchProducts() as any);
+  }, [dispatch]);
 
   if (loading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+      <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100vh" }}>
         <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (error) {
+    return (
+      <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100vh" }}>
+        <Alert severity="error">{error}</Alert>
       </Box>
     );
   }
@@ -36,10 +34,9 @@ const HomePage = () => {
   return (
     <Box sx={{ p: 2 }}>
       <DeliveryToggle />
-      <ProductList allProducts={products} />
+      <ProductList />
     </Box>
   );
 };
 
 export default HomePage;
-

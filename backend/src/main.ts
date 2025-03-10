@@ -4,6 +4,8 @@ import { ValidationPipe } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
 import * as cookieParser from 'cookie-parser';
+import * as bodyParser from 'body-parser';
+
 
 
 async function bootstrap() {
@@ -26,6 +28,8 @@ async function bootstrap() {
 
   app.use(cookieParser()); // ✅ Utiliser le cookie-parser
 
+ // Désactiver la conversion JSON pour le webhook Stripe puisque il attend un corps brut ( signature => chaîne de caractères)
+  app.use('/payment/stripe/webhook', bodyParser.raw({ type: 'application/json' }));
   
   await app.listen(process.env.PORT ?? 3001);
   console.log(
