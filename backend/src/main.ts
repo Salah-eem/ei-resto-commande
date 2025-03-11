@@ -18,7 +18,10 @@ async function bootstrap() {
 
    // Activer CORS
   app.enableCors({
-    origin: 'http://localhost:3000', // Autoriser uniquement ce domaine
+    origin: [
+      'http://localhost:3000', // Dev
+      'https://ei-resto-commande.vercel.app' // Production
+    ],
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE', // Méthodes HTTP autorisées
     credentials: true, // Autoriser les cookies et les en-têtes d'authentification
   });
