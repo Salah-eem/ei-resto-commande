@@ -3,7 +3,7 @@ import axios from "axios";
 import { CartItem } from "@/types/cartItem";
 
 // const API_URL = "http://localhost:3001/cart"; // URL backend
-const API_URL = process.env.API_URL!+"/cart";
+const API_URL = process.env.NEXT_PUBLIC_API_URL!+"/cart";
 
 
 interface CartState {
