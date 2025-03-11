@@ -3,7 +3,7 @@ import axios from "axios";
 import { Category } from "@/types/category";
 
 // const API_URL = "http://localhost:3001/category"; // URL backend
-const API_URL = process.env.API_URL!+"/category";
+const API_URL = process.env.NEXT_PUBLIC_API_URL!+"/category";
 
 
 interface CategoryState {

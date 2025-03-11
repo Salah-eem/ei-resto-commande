@@ -3,7 +3,7 @@ import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import axios from "axios";
 
 // const API_URL = "http://localhost:3001/order"; // URL backend
-const API_URL = process.env.API_URL!+"/order";
+const API_URL = process.env.NEXT_PUBLIC_API_URL!+"/order";
 
 
 interface OrderState {
