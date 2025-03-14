@@ -5,7 +5,6 @@ import { useDispatch, useSelector } from "react-redux";
 import { fetchProducts } from "@/store/slices/productSlice";
 import { RootState } from "@/store/store";
 import ProductList from "@/components/ProductList";
-import DeliveryToggle from "@/components/DeliveryToggle";
 
 const HomePage = () => {
   const dispatch = useDispatch();
@@ -33,7 +32,6 @@ const HomePage = () => {
 
   return (
     <Box sx={{ p: 2 }}>
-      <DeliveryToggle />
       <ProductList />
     </Box>
   );

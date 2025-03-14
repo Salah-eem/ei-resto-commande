@@ -24,6 +24,10 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isHorizontal = false
     setUserId(getUserId());
   }, []);
 
+  // Fonction pour mettre en majuscule la première lettre de chaque mot
+  const toTitleCase = (str: string) =>
+    str.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.slice(1).toLowerCase());
+
   const handleClickOpen = () => setOpenDialog(true);
   const handleCloseDialog = () => setOpenDialog(false);
 
@@ -41,7 +45,10 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isHorizontal = false
       item: {
         productId: product._id,
         name: product.name,
-        price: product.productType === ProductType.SINGLE_PRICE ? product.basePrice! : product.sizes?.find(s => s.name === size)?.price || 0,
+        price:
+          product.productType === ProductType.SINGLE_PRICE
+            ? product.basePrice!
+            : product.sizes?.find(s => s.name === size)?.price || 0,
         quantity,
         size: size || undefined,
         image_url: product.image_url,
@@ -54,30 +61,38 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isHorizontal = false
   };
 
   return (
-      <Card
-        sx={{
-          width: isHorizontal ? '100%' : 250,
-          minHeight: isHorizontal ? 140 : 340, // Ajustement dynamique de la hauteur
-          borderRadius: 3,
-          boxShadow: 4,
-          display: 'flex',
-          flexDirection: isHorizontal ? 'row-reverse' : 'column',
-          transition: 'transform 0.3s',
-          '&:hover': { transform: 'scale(1.03)' }
-        }}
-      >
-
-      <Box sx={{ position: 'relative' }}>
+    <Card
+      sx={{
+        width: isHorizontal ? '100%' : 250,
+        minHeight: isHorizontal ? 140 : 340,
+        borderRadius: 3,
+        boxShadow: 4,
+        display: 'flex',
+        flexDirection: isHorizontal ? 'row-reverse' : 'column',
+        transition: 'transform 0.3s',
+        '&:hover': { transform: 'scale(1.03)' },
+      }}
+    >
+      <Box sx={{ position: 'relative', display: 'flex' }}>
         <CardMedia
           component="img"
-          height={isHorizontal ? 120 : 160}
-          width={isHorizontal ? 100 : '100%'}
           image={product.image_url ? `${API_URL}/${product.image_url}` : '/placeholder.png'}
           alt={product.name}
-          sx={{ borderRadius: isHorizontal ? '10px 0 0 10px' : '10px 10px 0 0', objectFit: 'cover' }}
+          sx={{
+            width: isHorizontal ? 150 : '100%',
+            height: isHorizontal ? '100%' : 160,
+            borderRadius: isHorizontal ? '10px 0 0 10px' : '10px 10px 0 0',
+            objectFit: 'cover',
+          }}
         />
         <Box sx={{ position: 'absolute', bottom: 10, right: 10 }}>
-          <IconButton onClick={product.productType === ProductType.MULTIPLE_SIZES ? handleClickOpen : () => handleAddToCart(undefined, 1)}>
+          <IconButton
+            onClick={
+              product.productType === ProductType.MULTIPLE_SIZES
+                ? handleClickOpen
+                : () => handleAddToCart(undefined, 1)
+            }
+          >
             <AddCircleIcon fontSize="large" />
           </IconButton>
         </Box>
@@ -85,6 +100,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isHorizontal = false
       <CardContent
         sx={{
           flex: 1,
+          minWidth: 0,
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'space-between',
@@ -92,7 +108,9 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isHorizontal = false
         }}
       >
         <Box>
-          <Typography variant="h6" fontWeight="bold">{product.name}</Typography>
+          <Typography variant="h6" fontWeight="bold">
+            {toTitleCase(product.name)}
+          </Typography>
           <Typography variant="body2" sx={{ color: 'text.secondary' }}>
             {product.productType === ProductType.SINGLE_PRICE
               ? `${product.basePrice?.toFixed(2)} €`
@@ -105,6 +123,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isHorizontal = false
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
+              minWidth: 0,
             }}
           >
             {product.description}

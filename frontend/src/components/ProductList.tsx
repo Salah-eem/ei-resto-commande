@@ -1,5 +1,5 @@
-"use client";
-import React, { useEffect, useState } from "react";
+'use client';
+import React, { useEffect, useRef } from "react";
 import { Box, Typography, Grid, CircularProgress, Alert } from "@mui/material";
 import { useSelector, useDispatch } from "react-redux";
 import { fetchProducts } from "@/store/slices/productSlice";
@@ -7,6 +7,7 @@ import { fetchCategories } from "@/store/slices/categorySlice";
 import { RootState } from "@/store/store";
 import ProductCard from "./ProductCard";
 import CategoryNav from "./CategoryNav";
+import { Category } from "@/types/category";
 
 const ProductList: React.FC = () => {
   const dispatch = useDispatch();
@@ -17,9 +18,9 @@ const ProductList: React.FC = () => {
     (state: RootState) => state.categories
   );
 
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  // Crée un objet ref pour chaque catégorie
+  const categoryRefs = useRef<Record<string, HTMLDivElement | null>>({} as Record<string, HTMLDivElement | null>);
 
-  // ✅ Ne lance les requêtes qu'une seule fois si les données ne sont pas déjà présentes
   useEffect(() => {
     if (products.length === 0) {
       dispatch(fetchProducts() as any);
@@ -27,14 +28,17 @@ const ProductList: React.FC = () => {
     if (categories.length === 0) {
       dispatch(fetchCategories() as any);
     }
-  }, [dispatch]);
+  }, [dispatch, products.length, categories.length]);
 
-  // ✅ Sélectionne la première catégorie une seule fois après le chargement
-  useEffect(() => {
-    if (categories.length > 0 && !selectedCategory) {
-      setSelectedCategory(categories[0]._id);
+  // Au clic sur une catégorie, on fait défiler jusqu'à sa section
+  const handleCategoryChange = (category: Category) => {
+    const ref = categoryRefs.current[category._id];
+    if (ref) {
+      ref.scrollIntoView({ behavior: "smooth", block: "start" });
     }
-  }, [categories, selectedCategory]);
+  };
+
+  const featuredProducts = products.slice(0, 7);
 
   if (loadingProducts || loadingCategories) {
     return (
@@ -51,10 +55,6 @@ const ProductList: React.FC = () => {
       </Box>
     );
   }
-
-  const filteredProducts = selectedCategory
-    ? products.filter((product) => product.category._id === selectedCategory)
-    : products;
 
   return (
     <Box sx={{ p: 2 }}>
@@ -74,17 +74,12 @@ const ProductList: React.FC = () => {
           px: 2,
         }}
       >
-        {products.map((product) => (
+        {featuredProducts.map((product) => (
           <Box key={product._id} sx={{ scrollSnapAlign: 'start', minHeight: 340 }}>
-            <ProductCard product={product} isHorizontal={false} /> {/* Affichage vertical */}
+            <ProductCard product={product} isHorizontal={false} />
           </Box>
         ))}
       </Box>
-
-      {/* Section "Tous les produits" */}
-      <Typography variant="h5" fontWeight="bold" sx={{ mt: 4, mb: 2 }}>
-        Tous les produits
-      </Typography>
 
       {/* Barre de navigation fixe pour les catégories */}
       <Box
@@ -96,19 +91,35 @@ const ProductList: React.FC = () => {
           py: 1,
         }}
       >
-        <CategoryNav categories={categories} onCategoryChange={(category) => setSelectedCategory(category._id)} />
+        <CategoryNav categories={categories} onCategoryChange={handleCategoryChange} />
       </Box>
 
-      {/* Liste des produits filtrés */}
-      <Grid container spacing={2}>
-        {filteredProducts.map((product) => (
-          <Grid item xs={12} sm={6} key={product._id}>
-            <Box sx={{ minHeight: 140 }}>
-              <ProductCard product={product} isHorizontal={true} /> {/* Affichage horizontal */}
-            </Box>
-          </Grid>
-        ))}
-      </Grid>
+      {/* Section "Tous les produits" divisée par catégorie */}
+      {categories.map((category) => {
+        const productsInCategory = products.filter(
+          (product) => product.category._id === category._id
+        );
+        return (
+          <Box
+            key={category._id}
+            ref={(el: HTMLDivElement | null) => { categoryRefs.current[category._id] = el; }}
+            sx={{ mb: 4, scrollMarginTop: "140px" }}  // Définir ici l'offset pour le header
+          >
+            <Typography variant="h5" fontWeight="bold" sx={{ mt: 4, mb: 2 }}>
+              {category.name}
+            </Typography>
+            <Grid container spacing={2}>
+              {productsInCategory.map((product) => (
+                <Grid item xs={12} sm={6} key={product._id}>
+                  <Box sx={{ minHeight: 140 }}>
+                    <ProductCard product={product} isHorizontal={true} />
+                  </Box>
+                </Grid>
+              ))}
+            </Grid>
+          </Box>
+        );
+      })}
     </Box>
   );
 };

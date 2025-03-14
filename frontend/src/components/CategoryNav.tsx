@@ -9,16 +9,14 @@ interface CategoryNavProps {
 }
 
 const CategoryNav: React.FC<CategoryNavProps> = ({ categories, onCategoryChange }) => {
-  // Initialisation avec une valeur primitive : le nom de la catégorie
+  // On initialise la sélection avec le nom de la première catégorie (du tableau trié)
   const [selectedCategoryName, setSelectedCategoryName] = useState(categories[0]?.name || '');
 
   const handleChange = (_event: React.SyntheticEvent, newCategoryName: string) => {
     setSelectedCategoryName(newCategoryName);
-
-    // Trouver l'objet Category correspondant à partir du nom sélectionné
-    const selectedCategoryObject = categories.find((category) => category.name === newCategoryName);
-    if (selectedCategoryObject) {
-      onCategoryChange(selectedCategoryObject);
+    const selectedCategory = categories.find((cat) => cat.name === newCategoryName);
+    if (selectedCategory) {
+      onCategoryChange(selectedCategory);
     }
   };
 
