@@ -26,6 +26,7 @@ const STRIPE_PUBLIC_KEY = "pk_test_51R0USrC8GycP5SjONID25lxAZCuvL4YNYgIHuSVoFiPp
 const PAYPAL_CLIENT_ID = "your-paypal-client-id"; // Remplace avec ton client ID PayPal
 
 const CartPage: React.FC = () => {
+  const API_URL = process.env.NEXT_PUBLIC_API_URL!;
   const dispatch = useDispatch();
   const router = useRouter();
   const userId = useSelector((state: RootState) => state.user.userId)!;
@@ -78,7 +79,7 @@ const CartPage: React.FC = () => {
       if (paymentMethod === "card") {
         // ✅ Paiement via Stripe
         const stripe = await loadStripe(STRIPE_PUBLIC_KEY);
-        const response = await axios.post("http://localhost:3001/payment/stripe", {
+        const response = await axios.post(`${API_URL}/payment/stripe`, {
           userId,
           cartItems,
           totalAmount,
@@ -87,7 +88,7 @@ const CartPage: React.FC = () => {
         await stripe?.redirectToCheckout({ sessionId: response.data.sessionId });
       } else if (paymentMethod === "paypal") {
         // ✅ Paiement via PayPal
-        const response = await axios.post("http://localhost:3001/payment/paypal", {
+        const response = await axios.post(`${API_URL}/payment/paypal`, {
           userId,
           cartItems,
           totalAmount,
@@ -96,7 +97,7 @@ const CartPage: React.FC = () => {
         window.location.href = response.data.approvalUrl;
       } else if (paymentMethod === "cash") {
         // ✅ Paiement en espèces (Cash)
-        const response = await axios.post("http://localhost:3001/payment/cash", {
+        const response = await axios.post(`${API_URL}/payment/cash`, {
           userId,
           cartItems,
           totalAmount,

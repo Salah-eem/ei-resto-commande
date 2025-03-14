@@ -125,16 +125,16 @@ export class OrderService {
   // 🔹 Cron job qui diminue `estimatedDelivery` chaque minute
   private startDeliveryTimer() {
     cron.schedule('* * * * *', async () => { // Exécute toutes les minutes
-      console.log("🕒 Mise à jour automatique des délais de livraison...");
+      // console.log("🕒 Mise à jour automatique des délais de livraison...");
 
       await this.orderModel.updateMany(
         { orderStatus: OrderStatus.IN_PROGRESS, estimatedDelivery: { $gt: 0 } },
         { $inc: { estimatedDelivery: -1 } } // Réduit de 1 min toutes les minutes
       );
 
-      console.log("✅ estimatedDelivery mis à jour !");
+      // console.log("✅ estimatedDelivery mis à jour !");
     });
 
-    console.log("🚀 Cron job pour `estimatedDelivery` activé !");
+    // console.log("🚀 Cron job pour `estimatedDelivery` activé !");
   }
 }
