@@ -14,6 +14,7 @@ interface ProductCardProps {
 }
 
 const ProductCard: React.FC<ProductCardProps> = ({ product, isHorizontal = false }) => {
+  const API_URL = process.env.NEXT_PUBLIC_API_URL!;
   const dispatch = useDispatch();
   const [userId, setUserId] = useState<string | null>(null);
   const [openDialog, setOpenDialog] = useState(false);
@@ -71,7 +72,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isHorizontal = false
           component="img"
           height={isHorizontal ? 120 : 160}
           width={isHorizontal ? 100 : '100%'}
-          image={product.image_url ? `http://localhost:3001/${product.image_url}` : '/placeholder.png'}
+          image={product.image_url ? `${API_URL}/${product.image_url}` : '/placeholder.png'}
           alt={product.name}
           sx={{ borderRadius: isHorizontal ? '10px 0 0 10px' : '10px 10px 0 0', objectFit: 'cover' }}
         />
