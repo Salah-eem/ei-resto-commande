@@ -1,9 +1,11 @@
 'use client';
 import React from 'react';
-import { Box, TextField, Button, Typography, CircularProgress, Alert, Paper } from '@mui/material';
-import { useDispatch, useSelector } from 'react-redux';
+import { Box, TextField, Button, Typography, CircularProgress, Alert, Paper, Link as MuiLink, } from '@mui/material';
+import { useSelector } from 'react-redux';
 import { loginUser } from '@/store/slices/authSlice';
-import { RootState, AppDispatch } from '@/store/store';
+import { RootState } from '@/store/store';
+import { useAppDispatch } from '@/store/slices/hooks';
+import Link from 'next/link';
 import { useFormik } from 'formik';
 import * as yup from 'yup';
 
@@ -17,7 +19,7 @@ const validationSchema = yup.object({
 });
 
 const LoginPage: React.FC = () => {
-  const dispatch: AppDispatch = useDispatch();
+  const dispatch = useAppDispatch();
   const { loading, error } = useSelector((state: RootState) => state.auth);
 
   const formik = useFormik({
@@ -43,7 +45,7 @@ const LoginPage: React.FC = () => {
     >
       <Paper elevation={3} sx={{ p: 4, maxWidth: 400, width: '100%' }}>
         <Typography variant="h4" gutterBottom textAlign="center">
-          Connexion
+          Login
         </Typography>
         <Box
           component="form"
@@ -89,6 +91,14 @@ const LoginPage: React.FC = () => {
           >
             {loading ? <CircularProgress size={24} color="inherit" /> : 'Login'}
           </Button>
+        </Box>
+        <Box sx={{ mt: 2, textAlign: 'center' }}>
+          <Typography variant="body2">
+            You don't have an account ?{' '}
+            <MuiLink component={Link} href="/signup" underline="hover">
+              Sign up
+            </MuiLink>
+          </Typography>
         </Box>
       </Paper>
     </Box>
