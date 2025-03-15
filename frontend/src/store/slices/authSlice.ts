@@ -52,7 +52,6 @@ const authSlice = createSlice({
     logout(state) {
       state.token = null;
       localStorage.removeItem('access_token');
-      localStorage.removeItem('refresh_token');
     },
     // Permet de mettre à jour le token dans le store et le localStorage
     setToken(state, action) {

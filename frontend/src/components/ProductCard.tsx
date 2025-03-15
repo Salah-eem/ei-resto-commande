@@ -1,12 +1,12 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Card, CardContent, CardMedia, Typography, IconButton, Box } from '@mui/material';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import { addToCart } from '@/store/slices/cartSlice';
-import { getUserId } from '@/utils/user';
 import { Product, ProductType } from '@/types/product';
 import SizeDialog from './SizeDialog';
+import { RootState } from '@/store/store';
 
 interface ProductCardProps {
   product: Product;
@@ -16,13 +16,9 @@ interface ProductCardProps {
 const ProductCard: React.FC<ProductCardProps> = ({ product, isHorizontal = false }) => {
   const API_URL = process.env.NEXT_PUBLIC_API_URL!;
   const dispatch = useDispatch();
-  const [userId, setUserId] = useState<string | null>(null);
   const [openDialog, setOpenDialog] = useState(false);
   const [selectedSize, setSelectedSize] = useState<string | undefined>(undefined);
-
-  useEffect(() => {
-    setUserId(getUserId());
-  }, []);
+  const userId = useSelector((state: RootState) => state.user.userId);  
 
   // Fonction pour mettre en majuscule la première lettre de chaque mot
   const toTitleCase = (str: string) =>

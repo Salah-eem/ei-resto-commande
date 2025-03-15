@@ -4,8 +4,6 @@ import axios from "axios";
 
 // const API_URL = "http://localhost:3001/product"; // URL backend
 const API_URL = process.env.NEXT_PUBLIC_API_URL!+"/product";
-console.log(API_URL);
-console.log(process.env.NEXT_PUBLIC_API_URL);
 
 interface ProductState {
   items: Product[];

@@ -1,6 +1,5 @@
 // lib/api.ts
 import axios from 'axios';
-import { store } from '@/store/store';
 import { logout, setToken } from '@/store/slices/authSlice';
 
 const api = axios.create({
@@ -9,7 +8,7 @@ const api = axios.create({
   withCredentials: true,
 });
 
-// Intercepteur de requête : ajoute le token stocké (localStorage) à l'en-tête par défaut
+// Intercepteur de requête : ajoute le token stocké (localStorage) à l'en-tête Authorization
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('access_token');
@@ -73,9 +72,8 @@ api.interceptors.response.use(
         
         // Mettre à jour le token dans le localStorage
         localStorage.setItem('access_token', newToken);
-        // Si le backend renvoie également un nouveau refresh token, il sera stocké via les cookies par le backend
-        
-        // Mettre à jour le token dans le store Redux
+        // Importation dynamique du store pour éviter le cycle
+        const { store } = require('@/store/store');
         store.dispatch(setToken(newToken));
         
         // Mettre à jour l'en-tête par défaut
@@ -85,7 +83,7 @@ api.interceptors.response.use(
         return axios(originalRequest);
       } catch (err) {
         processQueue(err, null);
-        // Déconnexion si le rafraîchissement échoue
+        const { store } = require('@/store/store');
         store.dispatch(logout());
         if (typeof window !== 'undefined') {
           window.location.href = '/login';

@@ -8,6 +8,7 @@ import { useAppDispatch } from '@/store/slices/hooks';
 import Link from 'next/link';
 import { useFormik } from 'formik';
 import * as yup from 'yup';
+import { fetchUserProfile } from '@/store/slices/userSlice';
 
 // Schéma de validation avec Yup
 const validationSchema = yup.object({
@@ -28,8 +29,13 @@ const LoginPage: React.FC = () => {
       password: '',
     },
     validationSchema,
-    onSubmit: (values) => {
-      dispatch(loginUser(values));
+    onSubmit: async (values) => {
+       // Dispatch de l'action loginUser
+       const result = await dispatch(loginUser(values));
+       // Si la connexion est réussie, récupérer le profil utilisateur
+       if (result.meta.requestStatus === "fulfilled") {
+         dispatch(fetchUserProfile());
+       }
     },
   });
 
@@ -101,6 +107,14 @@ const LoginPage: React.FC = () => {
           </Typography>
         </Box>
       </Paper>
+      <Box sx={{ mt: 2, textAlign: 'center' }}>
+          <Typography variant="body2">
+            email : test@test.com
+          </Typography>
+          <Typography variant="body2">
+            password : Password1,
+          </Typography>
+        </Box>
     </Box>
   );
 };

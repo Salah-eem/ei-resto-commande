@@ -18,6 +18,7 @@ import { useSelector } from 'react-redux';
 import { signupUser } from '@/store/slices/authSlice';
 import { RootState } from '@/store/store';
 import { useAppDispatch } from '@/store/slices/hooks';
+import { fetchUserProfile } from '@/store/slices/userSlice';
 
 // Schéma de validation avec Yup
 const validationSchema = yup.object({
@@ -57,9 +58,12 @@ const SignupPage: React.FC = () => {
       confirmPassword: '',
     },
     validationSchema,
-    onSubmit: (values) => {
+    onSubmit: async (values) => {
       const { firstName, lastName, email, password } = values;
-      dispatch(signupUser({ firstName, lastName, email, password }));
+      const result = await dispatch(signupUser({ firstName, lastName, email, password }));
+      if (result.meta.requestStatus === "fulfilled") {
+        dispatch(fetchUserProfile());
+      }
     },
   });
 
