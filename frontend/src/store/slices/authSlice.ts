@@ -48,8 +48,16 @@ const authSlice = createSlice({
   name: 'auth',
   initialState,
   reducers: {
+    // Déconnexion : supprime le token du store et du localStorage
     logout(state) {
       state.token = null;
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
+    },
+    // Permet de mettre à jour le token dans le store et le localStorage
+    setToken(state, action) {
+      state.token = action.payload;
+      localStorage.setItem('access_token', action.payload);
     },
   },
   extraReducers: (builder) => {
@@ -83,5 +91,5 @@ const authSlice = createSlice({
   },
 });
 
-export const { logout } = authSlice.actions;
+export const { logout, setToken } = authSlice.actions;
 export default authSlice.reducer;
