@@ -9,7 +9,7 @@ interface AuthState {
 }
 
 const initialState: AuthState = {
-  token: null,
+  token: localStorage.getItem('access_token'),
   loading: false,
   error: null,
 };
@@ -60,7 +60,8 @@ const authSlice = createSlice({
       })
       .addCase(loginUser.fulfilled, (state, action) => {
         state.loading = false;
-        state.token = action.payload.token;
+        state.token = action.payload.access_token;
+        localStorage.setItem('access_token', action.payload.access_token);
       })
       .addCase(loginUser.rejected, (state, action) => {
         state.loading = false;
@@ -72,7 +73,8 @@ const authSlice = createSlice({
       })
       .addCase(signupUser.fulfilled, (state, action) => {
         state.loading = false;
-        state.token = action.payload.token;
+        state.token = action.payload.access_token;
+        localStorage.setItem('access_token', action.payload.access_token);
       })
       .addCase(signupUser.rejected, (state, action) => {
         state.loading = false;
