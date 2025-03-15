@@ -1,10 +1,8 @@
 import { Order } from "@/types/order";
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
-import axios from "axios";
+import api from "@/lib/api";
 
-// const API_URL = "http://localhost:3001/order"; // URL backend
-const API_URL = process.env.NEXT_PUBLIC_API_URL!+"/order";
-
+const API_URL = process.env.NEXT_PUBLIC_API_URL! + "/order";
 
 interface OrderState {
   orders: Order[];
@@ -18,15 +16,18 @@ const initialState: OrderState = {
   error: null,
 };
 
-// 📌 Récupérer les commandes d'un utilisateur
+// 📌 Récupérer les commandes d'un utilisateur en utilisant l'interceptor
 export const fetchOrders = createAsyncThunk(
   "orders/fetchOrders",
   async (userId: string, { rejectWithValue }) => {
     try {
-      const response = await axios.get(`${API_URL}/user/${userId}`);
+      // L'interceptor ajoutera automatiquement le token à l'en-tête Authorization
+      const response = await api.get(`${API_URL}/user/${userId}`);
       return response.data;
     } catch (error: any) {
-      return rejectWithValue(error.response?.data?.message || "Erreur lors du chargement des commandes.");
+      return rejectWithValue(
+        error.response?.data?.message || "Error while loading orders."
+      );
     }
   }
 );
