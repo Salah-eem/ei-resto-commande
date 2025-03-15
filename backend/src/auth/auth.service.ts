@@ -43,7 +43,7 @@ export class AuthService {
    * Génère un access token (valable 15m) et un refresh token (valable 7j)
    */
   async signToken(email: string, role: string): Promise<{ access_token: string, refresh_token: string }> {
-    const payload = { sub: email, role };
+    const payload = { email, role };
     const secret = this.config.get('JWT_SECRET');
     
     const access_token = await this.jwt.signAsync(payload, {
@@ -69,7 +69,7 @@ export class AuthService {
         secret: this.config.get('JWT_SECRET'),
       });
       // Vérifier que l'utilisateur existe (et éventuellement comparer le refresh token stocké)
-      const user = await this.userService.findByEmail(payload.sub);
+      const user = await this.userService.findByEmail(payload.email);
       if (!user) {
         throw new ForbiddenException('Access Denied');
       }

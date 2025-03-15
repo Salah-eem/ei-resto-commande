@@ -5,6 +5,8 @@ import { logout, setToken } from '@/store/slices/authSlice';
 
 const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL,
+  // Pour que les cookies soient envoyés avec chaque requête
+  withCredentials: true,
 });
 
 // Intercepteur de requête : ajoute le token stocké (localStorage) à l'en-tête par défaut
@@ -53,7 +55,6 @@ api.interceptors.response.use(
           failedQueue.push({ resolve, reject });
         })
           .then((token) => {
-            token = token as string;
             originalRequest.headers.Authorization = 'Bearer ' + token;
             return axios(originalRequest);
           })
@@ -62,18 +63,17 @@ api.interceptors.response.use(
 
       isRefreshing = true;
       try {
-        // Récupérer le refresh token depuis le stockage
-        const refreshToken = localStorage.getItem('refresh_token');
-        // Appel à l'endpoint pour rafraîchir le token (adapté à votre backend)
-        const response = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/auth/refresh`, { refreshToken });
+        // Appel à l'endpoint pour rafraîchir le token avec withCredentials pour envoyer les cookies
+        const response = await axios.post(
+          `${process.env.NEXT_PUBLIC_API_URL}/auth/refresh`,
+          {},
+          { withCredentials: true }
+        );
         const newToken = response.data.access_token;
         
         // Mettre à jour le token dans le localStorage
         localStorage.setItem('access_token', newToken);
-        // Si votre backend renvoie également un nouveau refresh token, mettez-le à jour
-        if (response.data.refresh_token) {
-          localStorage.setItem('refresh_token', response.data.refresh_token);
-        }
+        // Si le backend renvoie également un nouveau refresh token, il sera stocké via les cookies par le backend
         
         // Mettre à jour le token dans le store Redux
         store.dispatch(setToken(newToken));

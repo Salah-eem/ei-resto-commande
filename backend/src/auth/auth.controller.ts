@@ -7,12 +7,17 @@ import {
     Req, 
     HttpCode, 
     HttpStatus, 
-    ForbiddenException 
+    ForbiddenException, 
+    Get,
+    UseGuards
   } from '@nestjs/common';
   import { AuthService } from './auth.service';
   import { LoginDto } from './dto/login-dto';
   import { CreateUserDto } from 'src/user/dto/create-user.dto';
   import { Response, Request } from 'express';
+import { GetUser } from 'src/common/decorators/get-user.decorator';
+import { use } from 'passport';
+import { JwtGuard } from './guard/jwt.guard';
   
   @Controller('auth')
   export class AuthController {
@@ -66,28 +71,42 @@ import {
     @Post('refresh')
     @HttpCode(HttpStatus.OK)
     async refresh(
-      @Req() req: Request,
-      @Res({ passthrough: true }) res: Response
+        @Req() req: Request,
+        @Res({ passthrough: true }) res: Response,
     ) {
-      const refreshToken = req.cookies.refresh_token;
-      if (!refreshToken) {
+        // Récupérer le refresh token depuis le cookie HTTP-only
+        const refreshToken = req.cookies.refresh_token;
+        if (!refreshToken) {
         throw new ForbiddenException('Refresh token not provided');
-      }
-      // Utiliser le refresh token pour obtenir de nouveaux tokens
-      const tokens = await this.authService.refreshToken(refreshToken);
-      res.cookie('access_token', tokens.access_token, {
+        }
+        
+        // Utiliser le refresh token pour générer de nouveaux tokens
+        const tokens = await this.authService.refreshToken(refreshToken);
+        
+        // Mettre à jour les cookies avec les nouveaux tokens
+        res.cookie('access_token', tokens.access_token, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'strict',
-        maxAge: 15 * 60 * 1000,
-      });
-      res.cookie('refresh_token', tokens.refresh_token, {
+        maxAge: 15 * 60 * 1000, // 15 minutes
+        });
+        res.cookie('refresh_token', tokens.refresh_token, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'strict',
-        maxAge: 7 * 24 * 60 * 60 * 1000,
-      });
-      return tokens;
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 jours
+        });
+        
+        return tokens;
     }
+
+    @UseGuards(JwtGuard)
+    @Get('me')
+    getProfile(@GetUser() user: any) {
+        return {
+          message: 'Utilisateur connecté',
+          user: user,
+        };
+      }
   }
   
