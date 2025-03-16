@@ -85,7 +85,7 @@ const ProductList: React.FC = () => {
       <Box
         sx={{
           position: 'sticky',
-          top: 60,
+          top: 80,
           backgroundColor: 'white',
           zIndex: 1000,
           py: 1,
@@ -103,7 +103,7 @@ const ProductList: React.FC = () => {
           <Box
             key={category._id}
             ref={(el: HTMLDivElement | null) => { categoryRefs.current[category._id] = el; }}
-            sx={{ mb: 4, scrollMarginTop: "140px" }}  // Définir ici l'offset pour le header
+            sx={{ mb: 4, scrollMarginTop: "130px" }}  // Définir ici l'offset pour le header
           >
             <Typography variant="h5" fontWeight="bold" sx={{ mt: 4, mb: 2 }}>
               {category.name}
