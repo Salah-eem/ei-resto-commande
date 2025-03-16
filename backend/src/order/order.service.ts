@@ -137,4 +137,18 @@ export class OrderService {
 
     // console.log("🚀 Cron job pour `estimatedDelivery` activé !");
   }
+
+  // Fusionner les commandes d'un invité avec celles d'un utilisateur authent
+  async mergeOrders(guestId: string, userId: string): Promise<Order[]> {
+    // Trouver les commandes associées au guestId
+    const guestOrders = await this.orderModel.find({ userId: guestId });
+
+    if (guestOrders.length) {
+      // Mettre à jour chaque commande pour qu'elle soit associée à l'utilisateur authentifié
+      await this.orderModel.updateMany({ userId: guestId }, { $set: { userId } });
+    }
+
+    // Retourner les commandes associées à l'utilisateur authentifié
+    return this.orderModel.find({ userId });
+  }
 }

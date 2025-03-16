@@ -1,7 +1,8 @@
-import { Controller, Get, Param, Post, Body, Put, Delete, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, Post, Body, Put, Delete, UseGuards, Request } from '@nestjs/common';
 import { OrderService } from './order.service';
 import { Order, OrderStatus } from 'src/schemas/order.schema';
 import { JwtGuard } from 'src/auth/guard/jwt.guard';
+import { GetUser } from 'src/common/decorators/get-user.decorator';
 
 @UseGuards(JwtGuard)
 @Controller('order')
@@ -12,6 +13,13 @@ export class OrderController {
     @Get('user/:userId')
     async getOrdersByUser(@Param('userId') userId: string): Promise<Order[]> {
       return this.orderService.getOrdersByUser(userId);
+    }
+
+    // 📌 Fusionner les commandes d'un invité avec un utilisateur connecté
+    @Post('merge')
+    async mergeOrders(@GetUser() user: any, @Body('guestId') guestId: string) {
+      const userId = user.userId;
+      return this.orderService.mergeOrders(guestId, userId);
     }
 
     // 📌 Créer une commande après paiement

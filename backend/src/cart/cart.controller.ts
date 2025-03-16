@@ -1,5 +1,7 @@
-import { Controller, Post, Get, Body, Param, Patch, Delete, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, Patch, Delete, BadRequestException, UseGuards, Req, Request } from '@nestjs/common';
 import { CartService } from './cart.service';
+import { JwtGuard } from 'src/auth/guard/jwt.guard';
+import { GetUser } from 'src/common/decorators/get-user.decorator';
 
 @Controller('cart')
 export class CartController {
@@ -9,6 +11,16 @@ export class CartController {
   @Get(':userId')
   async getCart(@Param('userId') userId: string) {
     return this.cartService.getOrCreateCart(userId);
+  }
+
+  @Post('merge')
+  @UseGuards(JwtGuard)
+  async mergeCart(
+    @GetUser() user: any,
+    @Body('guestId') guestId: string,
+  ) {
+    const userId = user.userId;
+    return this.cartService.mergeCart(guestId, userId);
   }
 
   // ✅ Ajouter un article au panier

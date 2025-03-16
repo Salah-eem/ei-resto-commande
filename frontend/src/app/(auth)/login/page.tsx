@@ -9,6 +9,7 @@ import Link from 'next/link';
 import { useFormik } from 'formik';
 import * as yup from 'yup';
 import { fetchUserProfile } from '@/store/slices/userSlice';
+import api from '@/lib/api';
 
 // Schéma de validation avec Yup
 const validationSchema = yup.object({
@@ -18,6 +19,21 @@ const validationSchema = yup.object({
     //.min(6, 'Le mot de passe doit contenir au moins 6 caractères')
     .required('Password required'),
 });
+
+const mergeCartAndOrdersAfterLogin = async () => {
+  const guestId = localStorage.getItem("user_id");
+  if (guestId) {
+    try {
+      // Appeler l'endpoint de fusion de panier
+      await api.post("/cart/merge", { guestId });
+      // Appeler l'endpoint de fusion de commande
+      await api.post("/order/merge", { guestId });
+      
+    } catch (error) {
+      console.error("Erreur lors de la fusion des commandes", error);
+    }
+  }
+};
 
 const LoginPage: React.FC = () => {
   const dispatch = useAppDispatch();
@@ -30,12 +46,14 @@ const LoginPage: React.FC = () => {
     },
     validationSchema,
     onSubmit: async (values) => {
-       // Dispatch de l'action loginUser
-       const result = await dispatch(loginUser(values));
-       // Si la connexion est réussie, récupérer le profil utilisateur
-       if (result.meta.requestStatus === "fulfilled") {
-         dispatch(fetchUserProfile());
-       }
+      const result = await dispatch(loginUser(values));
+      if (result.meta.requestStatus === "fulfilled") {
+        const guestId = localStorage.getItem("user_id");
+        // Appeler l'endpoint de fusion de panier
+        await mergeCartAndOrdersAfterLogin();
+        // Ensuite, déclencher la récupération du profil utilisateur pour mettre à jour le store
+        dispatch(fetchUserProfile());
+      }
     },
   });
 

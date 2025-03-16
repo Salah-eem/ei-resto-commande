@@ -15,11 +15,11 @@ export class UserService {
         return await this.userModel.find().exec();
     }
 
-    async findById(id: string): Promise<UserDto | null> {
+    async findById(id: string): Promise<User | null> {
         return await this.userModel.findById(id).exec();
     }
 
-    async findByEmail(email: string): Promise<UserDto | null> {
+    async findByEmail(email: string): Promise<User | null> {
         return await this.userModel.findOne({email: email}).exec();
     }
 
@@ -28,7 +28,7 @@ export class UserService {
         return await this.userModel.findOne({firstName: firstName, lastName: lastName}).exec();
     }
 
-    async create(dto: CreateUserDto): Promise<UserDto> {
+    async create(dto: CreateUserDto): Promise<User> {
         // const newUser = new this.userModel(dto); // Crée l'instance
         // await newUser.save(); // Enregistre l'instance dans la base de données
         const userWithFullName = await this.findByFullName(dto.firstName, dto.lastName);
