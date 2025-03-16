@@ -2,7 +2,6 @@ import { Order } from "@/types/order";
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import api from "@/lib/api";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL! + "/order";
 
 interface OrderState {
   orders: Order[];
@@ -22,7 +21,7 @@ export const fetchOrders = createAsyncThunk(
   async (userId: string, { rejectWithValue }) => {
     try {
       // L'interceptor ajoutera automatiquement le token à l'en-tête Authorization
-      const response = await api.get(`${API_URL}/user/${userId}`);
+      const response = await api.get(`/order/user/${userId}`);
       return response.data;
     } catch (error: any) {
       return rejectWithValue(

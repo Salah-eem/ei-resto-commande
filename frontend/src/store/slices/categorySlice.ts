@@ -1,9 +1,6 @@
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
-import axios from "axios";
 import { Category } from "@/types/category";
-
-// const API_URL = "http://localhost:3001/category"; // URL backend
-const API_URL = process.env.NEXT_PUBLIC_API_URL!+"/category";
+import api from "@/lib/api";
 
 
 interface CategoryState {
@@ -21,7 +18,7 @@ const initialState: CategoryState = {
 
 // 📌 Récupérer les catégories depuis le backend
 export const fetchCategories = createAsyncThunk("categories/fetchCategories", async () => {
-  const response = await axios.get(API_URL);
+  const response = await api.get("/category");
   return response.data;
 });
 

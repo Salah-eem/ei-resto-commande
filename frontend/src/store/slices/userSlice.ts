@@ -2,17 +2,7 @@
 import { createSlice, createAsyncThunk, PayloadAction } from "@reduxjs/toolkit";
 import api from "@/lib/api";
 import { User } from "@/types/user";
-
-// Fonction pour générer un guestId et le stocker dans localStorage
-export const getUserId = (): string => {
-  let userId = localStorage.getItem("user_id");
-  console.log("userId récupéré :", userId); // Vérifiez ici
-  if (!userId) {
-    userId = `guest-${Date.now()}`;
-    localStorage.setItem("user_id", userId);
-  }
-  return userId;
-};
+import { getUserId } from "@/utils/user.utils";
 
 interface UserState {
   userId: string | null;

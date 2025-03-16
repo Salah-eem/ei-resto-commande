@@ -1,9 +1,7 @@
+import api from "@/lib/api";
 import { Product } from "@/types/product";
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
-import axios from "axios";
 
-// const API_URL = "http://localhost:3001/product"; // URL backend
-const API_URL = process.env.NEXT_PUBLIC_API_URL!+"/product";
 
 interface ProductState {
   items: Product[];
@@ -20,7 +18,7 @@ const initialState: ProductState = {
 
 // 📌 Récupérer les produits depuis le backend
 export const fetchProducts = createAsyncThunk("products/fetchProducts", async () => {
-  const response = await axios.get(API_URL);
+  const response = await api.get("product");
   return response.data;
 });
 
