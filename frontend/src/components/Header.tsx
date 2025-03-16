@@ -48,27 +48,48 @@ const Header = () => {
   };
 
   return (
-    <AppBar
-      position="fixed"
-      sx={{
-        backgroundColor: "#fff",
-        boxShadow: "0 2px 10px rgba(0,0,0,0.1)",
-        zIndex: 1000,
-      }}
-    >
-      <Container maxWidth="lg">
-        <Toolbar sx={{ display: "flex", justifyContent: "space-between" }}>
-          <Link href="/">
-            <Image src="/logo.png" alt="RestoCommande Logo" width={120} height={40} />
+    <AppBar position="fixed" sx={{ backgroundColor: "#fff", boxShadow: "0 2px 10px rgba(0,0,0,0.1)" }}>
+      <Toolbar sx={{ display: "flex", justifyContent: "space-between" }}>
+        {/* Logo à gauche */}
+        <Box sx={{ display: "flex", alignItems: "center" }}>
+          <Link href="/" style={{ display: "flex", alignItems: "center" }}>
+            <Image
+              src="/logo.png"
+              alt="RestoCommande Logo"
+              width={160}
+              height={50}
+              style={{ objectFit: "contain" }}
+            />
           </Link>
-          <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-            <Link href="/">
-              <Button sx={{ color: "black", fontWeight: "bold" }}>Menu</Button>
-            </Link>
-            <Link href="/my-orders">
-              <Button sx={{ color: "black", fontWeight: "bold" }}>Commandes</Button>
-            </Link>
-            {authToken ? (
+        </Box>
+
+        {/* Liens de navigation à droite */}
+        <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+          <Link href="/" style={{ textDecoration: "none" }}>
+            <Button color="primary" sx={{ fontWeight: "bold" }}>Menu</Button>
+          </Link>
+          <Link href="/my-orders" style={{ textDecoration: "none" }}>
+            <Button color="primary" sx={{ fontWeight: "bold" }}>My Orders</Button>
+          </Link>
+          <Link href="/login" style={{ textDecoration: "none" }}>
+            <Button color="primary" sx={{ fontWeight: "bold" }}>Login</Button>
+          </Link>
+        
+          <IconButton color="primary" onClick={() => setCartOpen(true)}>
+            <Badge badgeContent={totalItems} color="secondary">
+              <ShoppingCartIcon />
+            </Badge>
+          </IconButton>
+        </Box>
+      </Toolbar>
+      <CartDialog open={isCartOpen} onClose={() => setCartOpen(false)} />
+    </AppBar>
+  );
+};
+
+export default Header;
+/*
+{authToken ? (
               <>
                 <Typography variant="body1" sx={{ color: "black" }}>
                   Bonjour{" "}
@@ -88,17 +109,4 @@ const Header = () => {
                 <Button sx={{ color: "black", fontWeight: "bold" }}>Connexion</Button>
               </Link>
             )}
-            <IconButton onClick={() => setCartOpen(true)}>
-              <Badge badgeContent={totalItems} color="secondary">
-                <ShoppingCartIcon />
-              </Badge>
-            </IconButton>
-          </Box>
-        </Toolbar>
-      </Container>
-      <CartDialog open={isCartOpen} onClose={() => setCartOpen(false)} />
-    </AppBar>
-  );
-};
-
-export default Header;
+*/

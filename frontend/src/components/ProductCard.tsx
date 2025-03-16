@@ -82,7 +82,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isHorizontal = false
           }}
         />
         <Box sx={{ position: 'absolute', bottom: 10, right: 10 }}>
-          <IconButton
+          <IconButton color="primary"
             onClick={
               product.productType === ProductType.MULTIPLE_SIZES
                 ? handleClickOpen
