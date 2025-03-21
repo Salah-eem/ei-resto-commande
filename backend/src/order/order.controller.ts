@@ -3,6 +3,7 @@ import { OrderService } from './order.service';
 import { Order, OrderStatus } from 'src/schemas/order.schema';
 import { JwtGuard } from 'src/auth/guard/jwt.guard';
 import { GetUser } from 'src/common/decorators/get-user.decorator';
+import { CreateOrderDto } from './dto/create-order.dto';
 
 // @UseGuards(JwtGuard)
 @Controller('order')
@@ -30,8 +31,8 @@ export class OrderController {
 
     // 📌 Créer une commande après paiement
     @Post('create')
-    async createOrder(@Body() body: { userId: string; orderType: string, paymentMethod: string }): Promise<Order> {
-      return this.orderService.createOrder(body.userId, body.orderType, body.paymentMethod);
+    async createOrder(@Body() createOrderDto: CreateOrderDto): Promise<Order> {
+      return this.orderService.createOrder(createOrderDto);
     }
 
     @Patch(':id/position')

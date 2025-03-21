@@ -4,6 +4,7 @@ import { Model } from 'mongoose';
 import { Cart, CartDocument } from 'src/schemas/cart.schema';
 import { Order, OrderDocument, OrderStatus, OrderType, PaymentMethod, PaymentStatus } from 'src/schemas/order.schema';
 import * as cron from 'node-cron';
+import { CreateOrderDto } from './dto/create-order.dto';
 
 
 @Injectable()
@@ -106,29 +107,32 @@ export class OrderService {
   }
 
   // Créer une commande après paiement réussi
-  async createOrder(userId: string, orderType: string, paymentMethod: string, paymentStatus: string = PaymentStatus.PENDING) {
+  async createOrder(createOrderDto: CreateOrderDto): Promise<Order> {
+    const { userId, orderType, paymentMethod, address } = createOrderDto;
+  
     const cart = await this.cartModel.findOne({ userId });
-
+  
     if (!cart || cart.items.length === 0) {
       throw new BadRequestException("Cart is empty.");
     }
-
+  
     const deliveryFee = orderType == OrderType.DELIVERY ? 3.99 : 0;
-
+  
     const newOrder = new this.orderModel({
       userId,
       items: cart.items,
       totalAmount: cart.items.reduce((total, item) => total + ((item.price * item.quantity) + deliveryFee), 0),
       deliveryFee: deliveryFee,
-      orderStatus: OrderStatus.IN_PROGRESS, // En cours de préparation
-      paymentStatus, 
-      orderType, // Livraison ou à emporter
-      paymentMethod, // Carte, PayPal ou espèces
+      orderStatus: OrderStatus.IN_PROGRESS,
+      paymentStatus: PaymentStatus.PENDING,
+      orderType,
+      paymentMethod,
+      deliveryPosition: address, // 🟢 Adresse ajoutée ici
+      lastPositionUpdate: new Date(),
     });
-
-      // ✅ Calcul automatique du temps de livraison
-      newOrder.estimatedDelivery = await this.calculateEstimatedDeliveryTime(newOrder);
-
+  
+    newOrder.estimatedDelivery = await this.calculateEstimatedDeliveryTime(newOrder);
+  
     await newOrder.save();
     return newOrder;
   }

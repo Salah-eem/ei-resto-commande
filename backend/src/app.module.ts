@@ -10,6 +10,7 @@ import { CartModule } from './cart/cart.module';
 import { PaymentModule } from './payment/payment.module';
 import { OrderModule } from './order/order.module';
 import { DeliveryGateway } from './gateway/delivery.gateway';
+import { AddressModule } from './address/address.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { DeliveryGateway } from './gateway/delivery.gateway';
     CartModule,
     PaymentModule,
     OrderModule,
+    AddressModule,
   ],
   controllers: [],
     

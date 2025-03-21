@@ -1,5 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
+import { Address, AddressSchema } from './address.schema';
 
 export type OrderDocument = Order & Document;
 
@@ -78,9 +79,33 @@ export class Order extends Document {
   @Prop({ type: Date, default: Date.now })
   createdAt: Date;
 
-  deliveryPosition: { lat: number; lng: number };
+  // 📍 Position actuelle du livreur (latitude & longitude)
+  @Prop({
+    type: AddressSchema,
+    required: false, // Toujours facultatif pour deliveryPosition (parce que le livreur peut ne pas avoir encore commencé)
+    default: null,
+  })
+  deliveryPosition: Address | null;
 
+  // 🕒 Heure estimée d'arrivée (peut être calculée dynamiquement si besoin)
+  @Prop({ type: Date, required: false })
+  estimatedArrivalTime: Date;
+
+  // 📅 Historique des positions (facultatif, utile pour traçabilité)
+  @Prop({
+    type: [
+      {
+        type: AddressSchema,
+        timestamp: { type: Date, default: Date.now },
+      },
+    ],
+    default: [],
+  })
+  positionHistory: (Address & { timestamp: Date })[];
+
+  // 🔄 Dernière mise à jour de la position
+  @Prop({ type: Date, default: null })
+  lastPositionUpdate: Date;
 }
 
 export const OrderSchema = SchemaFactory.createForClass(Order);
-
