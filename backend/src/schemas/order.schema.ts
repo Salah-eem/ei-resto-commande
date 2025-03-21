@@ -77,6 +77,9 @@ export class Order extends Document {
 
   @Prop({ type: Date, default: Date.now })
   createdAt: Date;
+
+  deliveryPosition: { lat: number; lng: number };
+
 }
 
 export const OrderSchema = SchemaFactory.createForClass(Order);

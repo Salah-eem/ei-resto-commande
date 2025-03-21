@@ -9,6 +9,7 @@ import { CategoryModule } from './category/category.module';
 import { CartModule } from './cart/cart.module';
 import { PaymentModule } from './payment/payment.module';
 import { OrderModule } from './order/order.module';
+import { DeliveryGateway } from './gateway/delivery.gateway';
 
 @Module({
   imports: [
@@ -28,6 +29,6 @@ import { OrderModule } from './order/order.module';
   ],
   controllers: [],
     
-  providers: [ ],
+  providers: [ DeliveryGateway ],
 })
 export class AppModule {}

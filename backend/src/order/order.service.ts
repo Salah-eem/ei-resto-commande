@@ -20,9 +20,20 @@ export class OrderService {
   //   return order.save();
   // }
 
+  updatePosition(id: string, position: { lat: number; lng: number }) {
+    return this.orderModel.findByIdAndUpdate(id, { deliveryPosition: position });
+  }
+
   // Récupérer toutes les commandes d'un utilisateur
   async getOrdersByUser(userId: string): Promise<Order[]> {
     return this.orderModel.find({ userId }).sort({ createdAt: -1 }).exec();
+  }
+
+  // Récupérer une commande
+  async getOrder(orderId: string): Promise<Order> {
+    const order = await this.orderModel.findById(orderId).exec();
+    if (!order) throw new NotFoundException('Order not found');
+    return order;
   }
   
   // Mettre à jour le statut d'une commande

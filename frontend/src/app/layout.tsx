@@ -5,6 +5,8 @@ import { ThemeProvider } from "@mui/material/styles";
 import Header from "@/components/Header";
 import theme from "@/theme";
 import { Providers } from "@/store/providers";
+import 'leaflet/dist/leaflet.css';
+
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

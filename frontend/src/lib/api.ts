@@ -86,7 +86,7 @@ api.interceptors.response.use(
         const { store } = require('@/store/store');
         store.dispatch(logout());
         if (typeof window !== 'undefined') {
-          window.location.href = '/login';
+          // window.location.href = '/login';
         }
         return Promise.reject(err);
       } finally {
