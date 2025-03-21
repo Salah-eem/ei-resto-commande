@@ -7,6 +7,7 @@ import { Model } from 'mongoose';
 import { Cart, CartDocument } from 'src/schemas/cart.schema';
 import { Order, OrderDocument, OrderStatus, OrderType, PaymentMethod, PaymentStatus } from 'src/schemas/order.schema';
 import { OrderService } from 'src/order/order.service';
+import { AddressDto } from 'src/address/dto/address.dto';
 
 @Injectable()
 export class PaymentService {
@@ -28,7 +29,7 @@ export class PaymentService {
     }
 
     // Créer un paiement Stripe
-    async processStripePayment(userId: string, cartItems: any[], totalAmount: number, orderType: string) {
+    async processStripePayment(userId: string, cartItems: any[], totalAmount: number, orderType: string, address: AddressDto) {
       const session = await this.stripe.checkout.sessions.create({
         payment_method_types: ['card'],
         line_items: cartItems.map((item) => ({
@@ -40,7 +41,7 @@ export class PaymentService {
           quantity: item.quantity,
         })),
         mode: 'payment',
-        metadata: { userId, orderType },
+        metadata: { userId, orderType, ...address },
         success_url: `http://localhost:3000/order-confirmation?success=true`,
         cancel_url: `http://localhost:3000/cart?canceled=true`,
       });
@@ -54,7 +55,27 @@ export class PaymentService {
         const session = event.data.object as Stripe.Checkout.Session;
 
         if (session.metadata && session.metadata.userId) {
-          await this.orderService.createOrder(session.metadata.userId, orderType, PaymentMethod.CARD, PaymentStatus.COMPLETED);
+           // Construire l'address à partir du metadata
+          const address: AddressDto = {
+            lat: parseFloat(session.metadata.lat),
+            lng: parseFloat(session.metadata.lng),
+            street: session.metadata.street,
+            streetNumber: Number.parseInt(session.metadata.streetNumber),
+            city: session.metadata.city,
+            postalCode: session.metadata.postalCode,
+            country: session.metadata.country,
+          };
+
+           // ✅ Convertir le string en enum :
+          const orderTypeEnum = OrderType[orderType.toUpperCase() as keyof typeof OrderType];
+
+          await this.orderService.createOrder({
+            userId: session.metadata.userId, 
+            orderType: orderTypeEnum, 
+            paymentMethod: PaymentMethod.CARD, 
+            paymentStatus: PaymentStatus.COMPLETED, 
+            address: address
+          });
           await this.clearCart(session.metadata.userId);
         }
       }
@@ -86,7 +107,7 @@ export class PaymentService {
     }
 
     // Capturer le paiement PayPal après confirmation
-    async capturePayPalPayment(orderId: string, userId: string, orderType: string) {
+    async capturePayPalPayment(orderId: string, userId: string, orderType: string, address: AddressDto) {
       const auth = Buffer.from(`${this.PAYPAL_CLIENT_ID}:${this.PAYPAL_SECRET}`).toString('base64');
 
       const { data } = await axios.post(
@@ -97,7 +118,17 @@ export class PaymentService {
 
       if (data.status === 'COMPLETED') {
         console.log('PayPal payment succeeded:', data);
-        await this.orderService.createOrder(userId, orderType, PaymentMethod.PAYPAL, PaymentStatus.COMPLETED);
+
+        // ✅ Convertir le string en enum :
+        const orderTypeEnum = OrderType[orderType.toUpperCase() as keyof typeof OrderType];
+
+        await this.orderService.createOrder({
+          userId, 
+          orderType: orderTypeEnum, 
+          paymentMethod: PaymentMethod.PAYPAL, 
+          paymentStatus: PaymentStatus.COMPLETED, 
+          address
+        });
         await this.clearCart(userId);
         return { success: true };
       } else {
@@ -120,17 +151,20 @@ export class PaymentService {
       return updatedOrder;
     }
 
-    async processCashPayment(userId: string, orderType: string) {    
-      const newOrder = await this.createOrder(userId, orderType, PaymentMethod.CASH);
+    async processCashPayment(userId: string, orderType: string, address: AddressDto) {   
+      // ✅ Convertir le string en enum :
+      const orderTypeEnum = OrderType[orderType.toUpperCase() as keyof typeof OrderType];
+
+      const newOrder = await this.orderService.createOrder({
+        userId, 
+        orderType: orderTypeEnum, 
+        paymentMethod: PaymentMethod.CASH,
+        paymentStatus: PaymentStatus.PENDING,
+        address
+      });
       await this.clearCart(userId); // Vider le panier après la commande
     
       return { success: true, orderId: newOrder._id };
-    }
-    
-
-    // Créer une commande après paiement réussi
-    async createOrder(userId: string, orderType: string, paymentMethod: string, paymentStatus: string = PaymentStatus.PENDING) {
-      return this.orderService.createOrder(userId, orderType, paymentMethod, paymentStatus);
     }
 
     // ✅ Vider le panier après paiement

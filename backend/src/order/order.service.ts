@@ -5,6 +5,7 @@ import { Cart, CartDocument } from 'src/schemas/cart.schema';
 import { Order, OrderDocument, OrderStatus, OrderType, PaymentMethod, PaymentStatus } from 'src/schemas/order.schema';
 import * as cron from 'node-cron';
 import { CreateOrderDto } from './dto/create-order.dto';
+import { Address } from 'src/schemas/address.schema';
 
 
 @Injectable()
@@ -21,9 +22,39 @@ export class OrderService {
   //   return order.save();
   // }
 
-  updatePosition(id: string, position: { lat: number; lng: number }) {
-    return this.orderModel.findByIdAndUpdate(id, { deliveryPosition: position });
+  async updatePosition(id: string, position: { lat: number; lng: number }) {
+    const order = await this.orderModel.findById(id);
+    if (!order) throw new NotFoundException('Order not found');
+    if(order.orderType !== OrderType.DELIVERY) 
+      throw new BadRequestException('Order is not a delivery');
+
+  
+    console.log("📍 Mise à jour de la position de la commande...");
+    console.log("Ancienne position:", order.deliveryPosition);
+  
+    // ➤ Mettre à jour uniquement lat/lng
+    order.deliveryPosition!.lat = position.lat;
+    order.deliveryPosition!.lng = position.lng;
+  
+    console.log("Nouvelle position:", order.deliveryPosition);
+  
+    order.lastPositionUpdate = new Date();
+  
+    // ➤ Copier toute l'adresse existante + timestamp
+    order.positionHistory.push({
+      lat: position.lat,
+      lng: position.lng,
+      street: order.deliveryPosition!.street,
+      city: order.deliveryPosition!.city,
+      postalCode: order.deliveryPosition!.postalCode,
+      country: order.deliveryPosition!.country,
+      timestamp: new Date(),
+    } as (Address & { timestamp: Date }));
+  
+    await order.save();
   }
+  
+  
 
   // Récupérer toutes les commandes d'un utilisateur
   async getOrdersByUser(userId: string): Promise<Order[]> {

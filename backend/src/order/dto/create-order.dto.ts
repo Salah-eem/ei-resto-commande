@@ -1,6 +1,6 @@
 import { IsEnum, IsNotEmpty, IsString, ValidateNested } from 'class-validator';
-import { Type } from 'class-transformer';
-import { OrderType, PaymentMethod } from 'src/schemas/order.schema';
+import { Transform, Type } from 'class-transformer';
+import { OrderType, PaymentMethod, PaymentStatus } from 'src/schemas/order.schema';
 import { AddressDto } from 'src/address/dto/address.dto';
 
 export class CreateOrderDto {
@@ -8,11 +8,16 @@ export class CreateOrderDto {
   @IsNotEmpty()
   userId: string;
 
-  @IsEnum(OrderType)
+  @IsEnum(OrderType, { message: 'orderType must be pickup or delivery' })
+  @Transform(({ value }) => value.toLowerCase())
   orderType: OrderType;
 
-  @IsEnum(PaymentMethod)
+  @IsEnum(PaymentMethod, { message: 'paymentMethod must be card, paypal, or cash' })
+  @Transform(({ value }) => value.toLowerCase())
   paymentMethod: PaymentMethod;
+  
+  @IsEnum(PaymentStatus)
+  paymentStatus: PaymentStatus;
 
   @ValidateNested()
   @Type(() => AddressDto)

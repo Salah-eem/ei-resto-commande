@@ -64,6 +64,10 @@ const CartPage: React.FC = () => {
   const [loadingPayment, setLoadingPayment] = useState(false);
   const [errorPayment, setErrorPayment] = useState<string | null>(null);
   const [addressOptions, setAddressOptions] = useState<string[]>([]);
+  const [selectedLat, setSelectedLat] = useState<number | null>(null);
+  const [selectedLng, setSelectedLng] = useState<number | null>(null);
+  const [selectedCountry, setSelectedCountry] = useState<string>("");
+
 
   useEffect(() => {
     if (userId) dispatch(fetchCart(userId) as any);
@@ -106,6 +110,16 @@ const CartPage: React.FC = () => {
       setLoadingPayment(true);
       setErrorPayment(null);
       try {
+        const address = {
+          lat: selectedLat,
+          lng: selectedLng,
+          street: formik.values.address,
+          streetNumber: formik.values.streetNumber,
+          city: formik.values.city,
+          postalCode: formik.values.postalCode,
+          country: selectedCountry,
+        };
+        
         if (paymentMethod === "card") {
           const stripe = await loadStripe(STRIPE_PUBLIC_KEY);
           const res = await axios.post(`${API_URL}/payment/stripe`, {
@@ -113,25 +127,27 @@ const CartPage: React.FC = () => {
             cartItems,
             totalAmount,
             orderType,
-            orderDetails: values,
+            address,
           });
           await stripe?.redirectToCheckout({ sessionId: res.data.sessionId });
+        
         } else if (paymentMethod === "paypal") {
           const res = await axios.post(`${API_URL}/payment/paypal`, {
             userId,
             cartItems,
             totalAmount,
             orderType,
-            orderDetails: values,
+            address,
           });
           window.location.href = res.data.approvalUrl;
+        
         } else if (paymentMethod === "cash") {
           const res = await axios.post(`${API_URL}/payment/cash`, {
             userId,
             cartItems,
             totalAmount,
             orderType,
-            orderDetails: values,
+            address,
           });
           if (res.data.success) {
             dispatch(clearCart(userId) as any);
@@ -139,7 +155,7 @@ const CartPage: React.FC = () => {
           } else {
             setErrorPayment("Error processing order.");
           }
-        }
+        }        
       } catch (err) {
         setErrorPayment("Payment error. Try again.");
       } finally {
@@ -226,15 +242,17 @@ const CartPage: React.FC = () => {
                   <>
                     <GeoapifyAutocomplete
                       value={formik.values.address || ""}
-                      onSelect={(address, city, postalCode) => {
+                      onSelect={(address, city, postalCode, lat, lng, country) => {
                         formik.setFieldValue("address", address);
                         formik.setFieldValue("city", city);
                         formik.setFieldValue("postalCode", postalCode);
+                        setSelectedLat(lat);
+                        setSelectedLng(lng);
+                        setSelectedCountry(country);
                       }}
                       error={formik.touched.address && Boolean(formik.errors.address)}
                       helperText={formik.touched.address && formik.errors.address}
                     />
-
 
                     <TextField
                       fullWidth

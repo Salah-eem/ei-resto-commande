@@ -3,9 +3,9 @@ import { Autocomplete, TextField, CircularProgress } from "@mui/material";
 
 interface Props {
   value: string;
-  onSelect: (address: string, city: string, postalCode: string) => void;
+  onSelect: (address: string, city: string, postalCode: string, lat: number, lng: number, country: string) => void;
   error?: boolean;
-  helperText?: string|boolean;
+  helperText?: string | boolean;
 }
 
 const GeoapifyAutocomplete: React.FC<Props> = ({ value, onSelect, error, helperText }) => {
@@ -33,13 +33,9 @@ const GeoapifyAutocomplete: React.FC<Props> = ({ value, onSelect, error, helperT
     }
   };
 
-  // Always add the current value in options if not present
   useEffect(() => {
     if (value && !options.find((o) => o.properties?.formatted === value)) {
-      setOptions((prev) => [
-        { properties: { formatted: value } },
-        ...prev,
-      ]);
+      setOptions((prev) => [{ properties: { formatted: value } }, ...prev]);
     }
   }, [value]);
 
@@ -47,7 +43,10 @@ const GeoapifyAutocomplete: React.FC<Props> = ({ value, onSelect, error, helperT
     const address = option.properties.formatted;
     const city = option.properties.city || option.properties.town || option.properties.village || "";
     const postalCode = option.properties.postcode || "";
-    onSelect(address, city, postalCode);
+    const lat = option.geometry.coordinates[1]; // Geoapify format: [lng, lat]
+    const lng = option.geometry.coordinates[0];
+    const country = option.properties.country || "";
+    onSelect(address, city, postalCode, lat, lng, country);
   };
 
   return (
@@ -59,7 +58,7 @@ const GeoapifyAutocomplete: React.FC<Props> = ({ value, onSelect, error, helperT
       onInputChange={(_, newInputValue) => fetchSuggestions(newInputValue)}
       onChange={(_, newValue) => {
         if (newValue) handleSelect(newValue);
-        else onSelect("", "", ""); // Clear case
+        else onSelect("", "", "", 0, 0, ""); // Clear case
       }}
       value={
         value
