@@ -7,6 +7,7 @@ import { Model } from 'mongoose';
 import { Cart, CartDocument } from 'src/schemas/cart.schema';
 import { Order, OrderDocument, OrderStatus, OrderType, PaymentMethod, PaymentStatus } from 'src/schemas/order.schema';
 import { OrderService } from 'src/order/order.service';
+import { CreateOrderDto } from 'src/order/dto/create-order.dto';
 import { AddressDto } from 'src/address/dto/address.dto';
 
 @Injectable()
@@ -50,32 +51,22 @@ export class PaymentService {
     }
 
     // Gérer le Webhook Stripe après paiement
-    async handleStripeWebhook(event: Stripe.Event, orderType: string) {
+    async handleStripeWebhook(event: Stripe.Event, orderType: string, address: AddressDto) {
       if (event.type === 'checkout.session.completed') {
         const session = event.data.object as Stripe.Checkout.Session;
 
         if (session.metadata && session.metadata.userId) {
-           // Construire l'address à partir du metadata
-          const address: AddressDto = {
-            lat: parseFloat(session.metadata.lat),
-            lng: parseFloat(session.metadata.lng),
-            street: session.metadata.street,
-            streetNumber: Number.parseInt(session.metadata.streetNumber),
-            city: session.metadata.city,
-            postalCode: session.metadata.postalCode,
-            country: session.metadata.country,
+          const orderTypeEnum = orderType === 'delivery' ? OrderType.DELIVERY : OrderType.PICKUP;
+
+          const createOrderDto: CreateOrderDto = {
+            userId: session.metadata.userId,
+            orderType: orderTypeEnum,
+            paymentMethod: PaymentMethod.CARD,
+            paymentStatus: PaymentStatus.COMPLETED,
+            deliveryAddress: address,
           };
 
-           // ✅ Convertir le string en enum :
-          const orderTypeEnum = OrderType[orderType.toUpperCase() as keyof typeof OrderType];
-
-          await this.orderService.createOrder({
-            userId: session.metadata.userId, 
-            orderType: orderTypeEnum, 
-            paymentMethod: PaymentMethod.CARD, 
-            paymentStatus: PaymentStatus.COMPLETED, 
-            address: address
-          });
+          await this.orderService.createOrder(createOrderDto);
           await this.clearCart(session.metadata.userId);
         }
       }
@@ -119,17 +110,19 @@ export class PaymentService {
       if (data.status === 'COMPLETED') {
         console.log('PayPal payment succeeded:', data);
 
-        // ✅ Convertir le string en enum :
-        const orderTypeEnum = OrderType[orderType.toUpperCase() as keyof typeof OrderType];
+        const orderTypeEnum = orderType === 'delivery' ? OrderType.DELIVERY : OrderType.PICKUP;
 
-        await this.orderService.createOrder({
-          userId, 
-          orderType: orderTypeEnum, 
-          paymentMethod: PaymentMethod.PAYPAL, 
-          paymentStatus: PaymentStatus.COMPLETED, 
-          address
-        });
+        const createOrderDto: CreateOrderDto = {
+          userId,
+          orderType: orderTypeEnum,
+          paymentMethod: PaymentMethod.PAYPAL,
+          paymentStatus: PaymentStatus.COMPLETED,
+          deliveryAddress: address,
+        };
+        
+        await this.orderService.createOrder(createOrderDto);
         await this.clearCart(userId);
+
         return { success: true };
       } else {
         throw new BadRequestException('Erreur de paiement PayPal');
@@ -151,22 +144,23 @@ export class PaymentService {
       return updatedOrder;
     }
 
-    async processCashPayment(userId: string, orderType: string, address: AddressDto) {   
-      // ✅ Convertir le string en enum :
-      const orderTypeEnum = OrderType[orderType.toUpperCase() as keyof typeof OrderType];
+    async processCashPayment(userId: string, orderType: string, address: AddressDto) {    
+      const orderTypeEnum = orderType === 'delivery' ? OrderType.DELIVERY : OrderType.PICKUP;
 
-      const newOrder = await this.orderService.createOrder({
-        userId, 
-        orderType: orderTypeEnum, 
-        paymentMethod: PaymentMethod.CASH,
-        paymentStatus: PaymentStatus.PENDING,
-        address
-      });
+        const createOrderDto: CreateOrderDto = {
+          userId,
+          orderType: orderTypeEnum,
+          paymentMethod: PaymentMethod.CASH,
+          paymentStatus: PaymentStatus.PENDING,
+          deliveryAddress: address,
+        };
+        
+      const newOrder = await this.orderService.createOrder(createOrderDto);
       await this.clearCart(userId); // Vider le panier après la commande
     
       return { success: true, orderId: newOrder._id };
     }
-
+    
     // ✅ Vider le panier après paiement
     async clearCart(userId: string) {
       await this.cartModel.findOneAndUpdate({ userId }, { items: [] });

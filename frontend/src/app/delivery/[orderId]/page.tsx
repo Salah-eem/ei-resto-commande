@@ -63,11 +63,11 @@ const DeliverySimulatorPage = () => {
       }
     };
 
-    if (order && order.deliveryPosition) {
+    if (order && order.deliveryAddress) {
       const start = { lat: 50.8503, lng: 4.3517 }; // Position restaurant
       const end = {
-        lat: order.deliveryPosition.lat,
-        lng: order.deliveryPosition.lng,
+        lat: order.deliveryAddress.lat,
+        lng: order.deliveryAddress.lng,
       };
 
       fetchRoute(start, end);
@@ -105,11 +105,11 @@ const DeliverySimulatorPage = () => {
       {loading && <Typography>Loading order details...</Typography>}
       {error && <Typography color="error">{error}</Typography>}
 
-      {order && order.deliveryPosition && (
+      {order && order.deliveryAddress && (
         <Box mb={2}>
           <Typography variant="body1">Client Position:</Typography>
           <Typography variant="body2">
-            Lat: {order.deliveryPosition.lat}, Lng: {order.deliveryPosition.lng}
+            Lat: {order.deliveryAddress.lat}, Lng: {order.deliveryAddress.lng}
           </Typography>
         </Box>
       )}

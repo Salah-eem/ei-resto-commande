@@ -11,6 +11,7 @@ import { PaymentModule } from './payment/payment.module';
 import { OrderModule } from './order/order.module';
 import { AddressModule } from './address/address.module';
 import { DeliveryGateway } from './gateway/delivery.gateway';
+import { RestaurantModule } from './restaurant/restaurant.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { DeliveryGateway } from './gateway/delivery.gateway';
     PaymentModule,
     OrderModule,
     AddressModule,
+    RestaurantModule,
   ],
   controllers: [],
     

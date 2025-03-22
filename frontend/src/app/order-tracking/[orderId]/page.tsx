@@ -90,8 +90,8 @@ const OrderTrackingPage = () => {
         const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/order/${orderId}`);
         const data = await res.json();
 
-        if (data.deliveryPosition) {
-          const clientPos: [number, number] = [data.deliveryPosition.lat, data.deliveryPosition.lng];
+        if (data.deliveryAddress) {
+          const clientPos: [number, number] = [data.deliveryAddress.lat, data.deliveryAddress.lng];
           setClientPosition(clientPos);
         }
 
@@ -102,8 +102,8 @@ const OrderTrackingPage = () => {
           setPosition(restaurantPosition);
         }
 
-        if (data.deliveryPosition) {
-          const route = await fetchRoute(restaurantPosition, [data.deliveryPosition.lat, data.deliveryPosition.lng]);
+        if (data.deliveryAddress) {
+          const route = await fetchRoute(restaurantPosition, [data.deliveryAddress.lat, data.deliveryAddress.lng]);
           setPolylineCoords(route);
         }
       } catch (err) {

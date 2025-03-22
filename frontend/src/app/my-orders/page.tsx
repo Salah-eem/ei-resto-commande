@@ -1,20 +1,32 @@
 "use client";
 import React, { useEffect } from "react";
-import { useDispatch, useSelector } from "react-redux";
 import { fetchOrders } from "@/store/slices/orderSlice";
 import { RootState } from "@/store/store";
-import { Box, Typography, CircularProgress, Alert, Button } from "@mui/material";
+import { Box, Typography, CircularProgress, Alert, Button, Container, Stack } from "@mui/material";
 import ShoppingBagIcon from "@mui/icons-material/ShoppingBag";
 import OrderList from "@/components/OrderList";
 import Link from "next/link";
+import { useAppDispatch, useAppSelector } from "@/store/slices/hooks";
+import { fetchRestaurantInfo } from "@/store/slices/restaurantSlice";
 
 const MyOrders: React.FC = () => {
-  const dispatch = useDispatch();
-  const token = useSelector((state: RootState) => state.auth.token);
-  const userId = useSelector((state: RootState) => state.user.userId);
-  const { orders, loading, error } = useSelector((state: RootState) => state.orders);
+  const dispatch = useAppDispatch();
+  const token = useAppSelector((state: RootState) => state.auth.token);
+  const userId = useAppSelector((state: RootState) => state.user.userId);
+  const { orders, loading, error } = useAppSelector((state: RootState) => state.orders);
+  const { address, deliveryFee } = useAppSelector((state: RootState) => state.restaurant);
 
-  // If user is not logged in, show a message with a link to the login page
+  useEffect(() => {
+    dispatch(fetchRestaurantInfo() as any);
+  }, [dispatch]);
+  
+  
+  useEffect(() => {
+    if (userId) {
+      dispatch(fetchOrders(userId) as any);
+    }
+  }, [userId, dispatch]);
+
   if (!token) {
     return (
       <Box
@@ -27,9 +39,7 @@ const MyOrders: React.FC = () => {
           height: "50vh",
         }}
       >
-        <Alert severity="info">
-          To view your orders, you must log in.
-        </Alert>
+        <Alert severity="info">To view your orders, you must log in.</Alert>
         <Link href="/login" passHref>
           <Button variant="contained" sx={{ mt: 2 }}>
             Log In
@@ -38,13 +48,6 @@ const MyOrders: React.FC = () => {
       </Box>
     );
   }
-
-  // If user is logged in, fetch orders using the userId
-  useEffect(() => {
-    if (userId) {
-      dispatch(fetchOrders(userId) as any);
-    }
-  }, [userId, dispatch]);
 
   if (loading) {
     return (
@@ -63,12 +66,15 @@ const MyOrders: React.FC = () => {
   }
 
   return (
-    <Box sx={{ p: 4 }}>
-      <Typography variant="h4" fontWeight="bold" textAlign="center" mb={3}>
-        <ShoppingBagIcon sx={{ fontSize: 32, mr: 1 }} /> My Orders
-      </Typography>
-      <OrderList orders={orders} />
-    </Box>
+    <Container maxWidth="lg" sx={{ py: 5 }}>
+      <Stack direction="column" alignItems="center" spacing={2} mb={4}>
+        <ShoppingBagIcon sx={{ fontSize: 50, color: "primary.main" }} />
+        <Typography variant="h4" fontWeight="bold">My Orders</Typography>
+        <Typography variant="subtitle1" color="text.secondary">Track and review all your recent orders.</Typography>
+      </Stack>
+
+      <OrderList orders={orders} deliveryFee={deliveryFee || 0} />
+    </Container>
   );
 };
 

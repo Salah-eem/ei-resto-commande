@@ -1,9 +1,10 @@
-import { IsEnum, IsNotEmpty, IsString, ValidateNested } from 'class-validator';
+import { IsEnum, IsNotEmpty, IsNumber, IsString, ValidateNested } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
-import { OrderType, PaymentMethod, PaymentStatus } from 'src/schemas/order.schema';
+import { OrderItem, OrderType, PaymentMethod, PaymentStatus } from 'src/schemas/order.schema';
 import { AddressDto } from 'src/address/dto/address.dto';
+import { CartItem } from 'src/schemas/cart.schema';
 
-export class CreateOrderDto {
+export class  CreateOrderDto {
   @IsString()
   @IsNotEmpty()
   userId: string;
@@ -21,5 +22,5 @@ export class CreateOrderDto {
 
   @ValidateNested()
   @Type(() => AddressDto)
-  address: AddressDto;
+  deliveryAddress?: AddressDto;
 }

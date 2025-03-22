@@ -1,4 +1,5 @@
-import { Controller, Post, Body, BadRequestException, Req, Res } from '@nestjs/common';
+import { Controller, Post, Body, BadRequestException, Req, Res, RawBodyRequest } from '@nestjs/common';
+import { Request, Response } from 'express';
 import { PaymentService } from './payment.service';
 import Stripe from 'stripe';
 import { AddressDto } from 'src/address/dto/address.dto';
@@ -24,29 +25,31 @@ export class PaymentController {
     );
   }
 
-  // ✅ Webhook Stripe pour confirmer le paiement
-  @Post('stripe/webhook')
-  async stripeWebhook(@Req() req, @Res() res) {
-    const sig = req.headers['stripe-signature'];
-    const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET || '';
-    
-    if (!endpointSecret) {
-      throw new Error('Stripe webhook secret is not defined');
-    }
+   // ✅ Webhook Stripe pour confirmer le paiement
+   @Post('stripe/webhook')
+   async stripeWebhook(@Req() req, @Res() res) {
+     const sig = req.headers['stripe-signature'];
+     const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET || '';
+     
+     if (!endpointSecret) {
+       throw new Error('Stripe webhook secret is not defined');
+     }
+ 
+     try {
+       const event = this.paymentService.stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
+       const object = event.data.object as Stripe.Checkout.Session;
+       const orderType = object.metadata?.orderType || 'pickup';
+       const address: AddressDto = object.metadata?.address
+         ? JSON.parse(object.metadata.address)
+         : undefined;
 
-    try {
-      const event = this.paymentService.stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
-      const object = event.data.object as Stripe.Checkout.Session;
-      const orderType = object.metadata?.orderType || 'pickup';
-
-      // L'adresse est récupérée depuis metadata dans handleStripeWebhook
-      await this.paymentService.handleStripeWebhook(event, orderType);
-      res.json({ received: true });
-    } catch (err) {
-      console.error('❌ Erreur Webhook:', err);
-      res.status(400).send(`Webhook Error: ${err.message}`);
-    }
-  }
+       await this.paymentService.handleStripeWebhook(event, orderType, address);
+       res.json({ received: true });
+     } catch (err) {
+       console.error('❌ Erreur Webhook:', err);
+       res.status(400).send(`Webhook Error: ${err.message}`);
+     }
+   }
 
   // ✅ Paiement via PayPal
   @Post('paypal')

@@ -15,6 +15,9 @@ export class Address extends Document {
   street: string;
 
   @Prop({ required: true })
+  streetNumber: number;
+
+  @Prop({ required: true })
   city: string;
 
   @Prop({ required: true })

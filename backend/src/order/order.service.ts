@@ -2,18 +2,19 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Cart, CartDocument } from 'src/schemas/cart.schema';
-import { Order, OrderDocument, OrderStatus, OrderType, PaymentMethod, PaymentStatus } from 'src/schemas/order.schema';
+import { Order, OrderDocument, OrderItem, OrderStatus, OrderType, PaymentMethod, PaymentStatus } from 'src/schemas/order.schema';
 import * as cron from 'node-cron';
 import { CreateOrderDto } from './dto/create-order.dto';
-import { Address } from 'src/schemas/address.schema';
+import { Restaurant, RestaurantSchema } from 'src/schemas/restaurant.schema';
+import { RestaurantService } from 'src/restaurant/restaurant.service';
 
 
 @Injectable()
 export class OrderService {
   constructor(@InjectModel(Order.name) private orderModel: Model<OrderDocument>,
               @InjectModel(Cart.name) private cartModel: Model<CartDocument>,
+              private restaurantService: RestaurantService,
             ) {
-              this.startDeliveryTimer(); // Démarrer le cron job au lancement du service
             }
 
   // Créer une nouvelle commande
@@ -22,39 +23,9 @@ export class OrderService {
   //   return order.save();
   // }
 
-  async updatePosition(id: string, position: { lat: number; lng: number }) {
-    const order = await this.orderModel.findById(id);
-    if (!order) throw new NotFoundException('Order not found');
-    if(order.orderType !== OrderType.DELIVERY) 
-      throw new BadRequestException('Order is not a delivery');
-
-  
-    console.log("📍 Mise à jour de la position de la commande...");
-    console.log("Ancienne position:", order.deliveryPosition);
-  
-    // ➤ Mettre à jour uniquement lat/lng
-    order.deliveryPosition!.lat = position.lat;
-    order.deliveryPosition!.lng = position.lng;
-  
-    console.log("Nouvelle position:", order.deliveryPosition);
-  
-    order.lastPositionUpdate = new Date();
-  
-    // ➤ Copier toute l'adresse existante + timestamp
-    order.positionHistory.push({
-      lat: position.lat,
-      lng: position.lng,
-      street: order.deliveryPosition!.street,
-      city: order.deliveryPosition!.city,
-      postalCode: order.deliveryPosition!.postalCode,
-      country: order.deliveryPosition!.country,
-      timestamp: new Date(),
-    } as (Address & { timestamp: Date }));
-  
-    await order.save();
+  updatePosition(id: string, position: { lat: number; lng: number }) {
+    return this.orderModel.findByIdAndUpdate(id, { deliveryPosition: position });
   }
-  
-  
 
   // Récupérer toutes les commandes d'un utilisateur
   async getOrdersByUser(userId: string): Promise<Order[]> {
@@ -96,93 +67,42 @@ export class OrderService {
     return this.orderModel.deleteMany().exec();
   }
 
-  private async calculateEstimatedDeliveryTime(order: Order): Promise<number> {
-    let estimatedTime = 15; // Temps de base en minutes
+// Créer une commande après paiement réussi
+async createOrder(createOrderDto: CreateOrderDto): Promise<Order> {
+  const { userId, orderType, paymentMethod, paymentStatus, deliveryAddress } = createOrderDto;
+  const cart = await this.cartModel.findOne({ userId });
 
-    // 🔹 Comptage des commandes "IN_PROGRESS"
-    const inProgressCount = await this.orderModel.countDocuments({ orderStatus: OrderStatus.IN_PROGRESS });
-
-    // 🔹 Ajustement selon le type de commande
-    if (order.orderType === OrderType.DELIVERY) {
-      estimatedTime += 15; // Temps moyen pour la livraison
-    }
-
-    // 🔹 Ajustement selon le nombre d'articles
-    const itemCount = order.items.reduce((total, item) => total + item.quantity, 0);
-    if (itemCount > 3) {
-      estimatedTime += 5; // Ajoute 5 min si la commande contient plus de 3 articles
-    }
-    if (itemCount > 6) {
-      estimatedTime += 10; // Ajoute 10 min si la commande dépasse 6 articles
-    }
-
-    // 🔹 Ajustement selon le nombre de commandes "IN_PROGRESS"
-    if (inProgressCount > 5) {
-      estimatedTime += 5; // Plus de 5 commandes en cours
-    }
-    if (inProgressCount > 10) {
-      estimatedTime += 10; // Plus de 10 commandes en cours
-    }
-    if (inProgressCount > 15) {
-      estimatedTime += 15; // Plus de 15 commandes en cours
-    }
-
-    return Math.max(15, estimatedTime); // Minimum 15 min
+  if (!cart || cart.items.length === 0) {
+    throw new BadRequestException("Cart is empty.");
   }
 
-  // le temps de livraison estimé
-  async estimatedDeliveryTime(orderId: string): Promise<number> {
-    const order = await this.orderModel.findById(orderId).exec();
-    if (!order) throw new NotFoundException('Order not found');
-    return this.calculateEstimatedDeliveryTime(order);
-  }
+  const deliveryFee = orderType == OrderType.DELIVERY ? this.restaurantService.getRestaurant()!.deliveryFee : 0;
 
-  // Créer une commande après paiement réussi
-  async createOrder(createOrderDto: CreateOrderDto): Promise<Order> {
-    const { userId, orderType, paymentMethod, address } = createOrderDto;
-  
-    const cart = await this.cartModel.findOne({ userId });
-  
-    if (!cart || cart.items.length === 0) {
-      throw new BadRequestException("Cart is empty.");
-    }
-  
-    const deliveryFee = orderType == OrderType.DELIVERY ? 3.99 : 0;
-  
-    const newOrder = new this.orderModel({
-      userId,
-      items: cart.items,
-      totalAmount: cart.items.reduce((total, item) => total + ((item.price * item.quantity) + deliveryFee), 0),
-      deliveryFee: deliveryFee,
-      orderStatus: OrderStatus.IN_PROGRESS,
-      paymentStatus: PaymentStatus.PENDING,
-      orderType,
-      paymentMethod,
-      deliveryPosition: address, // 🟢 Adresse ajoutée ici
-      lastPositionUpdate: new Date(),
-    });
-  
-    newOrder.estimatedDelivery = await this.calculateEstimatedDeliveryTime(newOrder);
-  
-    await newOrder.save();
-    return newOrder;
-  }
+  // Nettoyer les items du panier
+  const orderItems: OrderItem[] = cart.items.map((item) => ({
+    productId: item.productId,
+    name: item.name,
+    quantity: item.quantity,
+    price: item.price,
+    size: item.size,
+    image_url: item.image_url,
+  }));
 
-  // 🔹 Cron job qui diminue `estimatedDelivery` chaque minute
-  private startDeliveryTimer() {
-    cron.schedule('* * * * *', async () => { // Exécute toutes les minutes
-      // console.log("🕒 Mise à jour automatique des délais de livraison...");
+  const newOrder = new this.orderModel({
+    userId,
+    items: orderItems,
+    totalAmount: orderItems.reduce((total, item) => total + item.price * item.quantity, 0) + deliveryFee,
+    orderStatus: OrderStatus.IN_PREPARATION, // En cours de préparation
+    paymentStatus,
+    orderType, // Livraison ou à emporter
+    paymentMethod, // Carte, PayPal ou espèces
+    deliveryAddress,
+  });
 
-      await this.orderModel.updateMany(
-        { orderStatus: OrderStatus.IN_PROGRESS, estimatedDelivery: { $gt: 0 } },
-        { $inc: { estimatedDelivery: -1 } } // Réduit de 1 min toutes les minutes
-      );
+  await newOrder.save();
+  return newOrder;
+}
 
-      // console.log("✅ estimatedDelivery mis à jour !");
-    });
-
-    // console.log("🚀 Cron job pour `estimatedDelivery` activé !");
-  }
 
   // Fusionner les commandes d'un invité avec celles d'un utilisateur authent
   async mergeOrders(guestId: string, userId: string): Promise<Order[]> {

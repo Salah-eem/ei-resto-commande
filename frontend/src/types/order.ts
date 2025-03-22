@@ -2,11 +2,13 @@ import { Address } from "./address";
 import { CartItem } from "./cartItem";
 
 export enum OrderStatus {
-  IN_PROGRESS = "in_progress",
-  READY = "ready",
-  PICKED_UP = "picked_up",
-  DELIVERED = "delivered",
-  CANCELED = "canceled",
+  IN_PREPARATION = 'in preparation',
+  READY_FOR_PICKUP = 'ready for pickup',
+  READY_FOR_DELIVERY = 'ready for delivery',
+  PICKED_UP = 'picked up',
+  OUT_FOR_DELIVERY = 'out for delivery',
+  DELIVERED = 'delivered',
+  CANCELED = 'canceled',
 }
 
 export enum PaymentStatus {
@@ -36,16 +38,13 @@ export interface Order {
   userId: string;
   items: CartItem[];
   totalAmount: number;
-  deliveryFee: number;
   orderStatus: OrderStatus;
   paymentMethod: PaymentMethod;
   paymentStatus: PaymentStatus;
   orderType: OrderType;
-  estimatedDelivery: number;
-  estimatedArrivalTime?: string;
   createdAt: string;
   updatedAt: string;
-  deliveryPosition: Address | null;
+  deliveryAddress: Address | null;
   positionHistory: PositionHistory[];
   lastPositionUpdate: string | null;
 }

@@ -5,9 +5,11 @@ import { Address, AddressSchema } from './address.schema';
 export type OrderDocument = Order & Document;
 
 export enum OrderStatus {
-  IN_PROGRESS = 'in_progress',
-  READY = 'ready',
-  PICKED_UP = 'picked_up',
+  IN_PREPARATION = 'in preparation',
+  READY_FOR_PICKUP = 'ready for pickup',
+  READY_FOR_DELIVERY = 'ready for delivery',
+  PICKED_UP = 'picked up',
+  OUT_FOR_DELIVERY = 'out for delivery',
   DELIVERED = 'delivered',
   CANCELED = 'canceled',
 }
@@ -29,39 +31,39 @@ export enum OrderType {
   DELIVERY = 'delivery',
 }
 
+
+@Schema()
+export class OrderItem {
+  @Prop({ required: true })
+  productId: string; 
+
+  @Prop({ required: true })
+  name: string;
+
+  @Prop({ required: true })
+  price: number;
+
+  @Prop({ required: true })
+  quantity: number;
+
+  @Prop()
+  size?: string; 
+  @Prop()
+  image_url?: string;
+}
+
 @Schema({ timestamps: true })
 export class Order extends Document {
   @Prop({ required: true })
   userId: string;
 
-  @Prop({
-    type: [
-      {
-        productId: { type: String, required: true },
-        name: { type: String, required: true },
-        quantity: { type: Number, required: true },
-        price: { type: Number, required: true },
-        size: { type: String, required: false },
-        image_url: { type: String, required: false },
-      },
-    ],
-  })
-  items: {
-    productId: string;
-    name: string;
-    quantity: number;
-    price: number;
-    size?: string;
-    image_url?: string;
-  }[];
+  @Prop({ type: [OrderItem],})
+  items: OrderItem[];
 
   @Prop({ required: true })
   totalAmount: number;
 
-  @Prop({ default: 0 })
-  deliveryFee: number;
-
-  @Prop({ type: String, enum: Object.values(OrderStatus), default: OrderStatus.IN_PROGRESS })
+  @Prop({ type: String, enum: Object.values(OrderStatus), default: OrderStatus.IN_PREPARATION })
   orderStatus: OrderStatus;
 
   @Prop({ type: String, enum: Object.values(PaymentMethod), required: true })
@@ -72,9 +74,6 @@ export class Order extends Document {
 
   @Prop({ type: String, enum: Object.values(OrderType), required: true })
   orderType: OrderType;
-  
-  @Prop({ type: Number, default: 30 }) // Duration in minutes
-  estimatedDelivery: number;
 
   @Prop({ type: Date, default: Date.now })
   createdAt: Date;
@@ -85,11 +84,7 @@ export class Order extends Document {
     required: false, // Toujours facultatif pour deliveryPosition (parce que le livreur peut ne pas avoir encore commencé)
     default: null,
   })
-  deliveryPosition: Address | null;
-
-  // 🕒 Heure estimée d'arrivée (peut être calculée dynamiquement si besoin)
-  @Prop({ type: Date, required: false })
-  estimatedArrivalTime: Date;
+  deliveryAddress: Address | null;
 
   // 📅 Historique des positions (facultatif, utile pour traçabilité)
   @Prop({
