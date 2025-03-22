@@ -1,17 +1,17 @@
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import api from "@/lib/api";
-import { Restaurant } from "@/types/restaurant";
+import { Address } from "@/types/address";
 
 
 interface RestaurantState {
-  address: string | null;
+  restaurantAddress: Address | null;
   deliveryFee: number | null;
   loading: boolean;
   error: string | null;
 }
 
 const initialState: RestaurantState = {
-  address: null,
+  restaurantAddress: null,
   deliveryFee: null,
   loading: false,
   error: null,
@@ -37,7 +37,7 @@ const restaurantSlice = createSlice({
       })
       .addCase(fetchRestaurantInfo.fulfilled, (state, action) => {
         state.loading = false;
-        state.address = action.payload.address;
+        state.restaurantAddress = action.payload.address;
         state.deliveryFee = action.payload.deliveryFee;
       })
       .addCase(fetchRestaurantInfo.rejected, (state, action) => {

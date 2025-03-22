@@ -22,6 +22,7 @@
     "axios": "^1.8.1",
     "formik": "^2.4.6",
     "leaflet": "^1.9.4",
+    "lodash": "^4.17.21",
     "next": "15.1.6",
     "next-auth": "^4.24.11",
     "react": "^19.0.0",
@@ -37,6 +38,7 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@types/leaflet": "^1.9.16",
+    "@types/lodash": "^4.17.16",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

@@ -27,7 +27,7 @@ export class RestaurantService implements OnModuleInit {
     }
 
     async getRestaurantInfo() {
-      const restaurant = await this.restaurantModel.findOne().select('address deliveryFee'); // On sélectionne seulement les champs voulus
+      const restaurant = await this.restaurantModel.findOne().select('address deliveryFee');
       if (!restaurant) {
         throw new NotFoundException('Restaurant not found');
       }

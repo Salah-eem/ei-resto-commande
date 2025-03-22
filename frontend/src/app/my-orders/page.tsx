@@ -14,7 +14,7 @@ const MyOrders: React.FC = () => {
   const token = useAppSelector((state: RootState) => state.auth.token);
   const userId = useAppSelector((state: RootState) => state.user.userId);
   const { orders, loading, error } = useAppSelector((state: RootState) => state.orders);
-  const { address, deliveryFee } = useAppSelector((state: RootState) => state.restaurant);
+  const { restaurantAddress, deliveryFee } = useAppSelector((state: RootState) => state.restaurant);
 
   useEffect(() => {
     dispatch(fetchRestaurantInfo() as any);
