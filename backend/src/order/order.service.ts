@@ -38,9 +38,15 @@ export class OrderService {
     if (!order) throw new NotFoundException('Order not found');
     return order;
   }
+
+  async findOrdersInDelivery() {
+    return this.orderModel.find(
+      { orderStatus: OrderStatus.READY_FOR_DELIVERY , orderType: OrderType.DELIVERY },);
+  }
   
   // Mettre à jour le statut d'une commande
-  async updateOrderStatus(orderId: string, orderStatus: OrderStatus): Promise<Order> {
+  async updateOrderStatus(orderId: string, orderStatus: string): Promise<Order> {
+    console.log(orderId, orderStatus);
     const updatedOrder = await this.orderModel.findByIdAndUpdate(orderId, { orderStatus }, { new: true });
     if (!updatedOrder) throw new NotFoundException('Order not found');
     return updatedOrder;

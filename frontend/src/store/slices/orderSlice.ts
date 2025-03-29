@@ -48,6 +48,22 @@ export const fetchOrder = createAsyncThunk(
   }
 );
 
+// 📌 Prendre une commande
+export const createOrder = createAsyncThunk(
+  "orders/createPhoneOrder",
+  async (orderData: any, { rejectWithValue }) => {
+    try {
+      const response = await api.post("/order/create-phone", orderData);
+      return response.data;
+    } catch (error: any) {
+      return rejectWithValue(
+        error.response?.data?.message || "Erreur lors de la création de la commande."
+      );
+    }
+  }
+);
+
+
 const orderSlice = createSlice({
   name: "orders",
   initialState,
@@ -78,7 +94,21 @@ const orderSlice = createSlice({
       .addCase(fetchOrder.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload as string;
-      });
+      })
+      .addCase(createOrder.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(createOrder.fulfilled, (state, action) => {
+        state.loading = false;
+        state.order = action.payload;
+      })
+      .addCase(createOrder.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      })
+      
+      ;
   },
 });
 

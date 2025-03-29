@@ -10,6 +10,12 @@ import { CreateOrderDto } from './dto/create-order.dto';
 export class OrderController {
     constructor(private readonly orderService: OrderService) {}
 
+    
+    @Get('in-delivery')
+    async getOrdersInDelivery() {
+      return this.orderService.findOrdersInDelivery();
+    }
+    
     // 📌 Récupérer les commandes d'un utilisateur
     @Get('user/:userId')
     async getOrdersByUser(@Param('userId') userId: string): Promise<Order[]> {
@@ -25,6 +31,8 @@ export class OrderController {
     // 📌 Fusionner les commandes d'un invité avec un utilisateur connecté
     @Post('merge')
     async mergeOrders(@GetUser() user: any, @Body('guestId') guestId: string) {
+      console.log('user', user);
+
       const userId = user.userId;
       return this.orderService.mergeOrders(guestId, userId);
     }
@@ -42,7 +50,8 @@ export class OrderController {
 
     // 📌 Mettre à jour le statut d'une commande (Ex: après paiement)
     @Put(':orderId/status')
-    async updateOrderStatus(@Param('orderId') orderId: string, @Body('status') status: OrderStatus): Promise<Order> {
+    async updateOrderStatus(@Param('orderId') orderId: string, @Body('orderStatus') status: string): Promise<Order> {
+      console.log(orderId, status);
       return this.orderService.updateOrderStatus(orderId, status);
     }
 

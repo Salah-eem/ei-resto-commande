@@ -54,7 +54,6 @@ const userSlice = createSlice({
       const newGuestId = getUserId();
       state.userId = newGuestId;
       state.profile = null;
-      console.log("userId mis à jour :", state.userId); // Vérifiez ici
     },
   },
   extraReducers: (builder) => {

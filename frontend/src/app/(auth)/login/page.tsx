@@ -1,6 +1,6 @@
 'use client';
-import React from 'react';
-import { Box, TextField, Button, Typography, CircularProgress, Alert, Paper, Link as MuiLink, } from '@mui/material';
+import React, { useState, useEffect } from 'react';
+import { Box, TextField, Button, Typography, CircularProgress, Alert, Paper, Link as MuiLink, Snackbar } from '@mui/material';
 import { useSelector } from 'react-redux';
 import { loginUser } from '@/store/slices/authSlice';
 import { RootState } from '@/store/store';
@@ -10,25 +10,20 @@ import { useFormik } from 'formik';
 import * as yup from 'yup';
 import { fetchUserProfile } from '@/store/slices/userSlice';
 import api from '@/lib/api';
+import { useRouter } from 'next/navigation';
+import { Role } from '@/types/user';
 
-// Schéma de validation avec Yup
 const validationSchema = yup.object({
   email: yup.string().email('Invalid email').required('Email required'),
-  password: yup
-    .string()
-    //.min(6, 'Le mot de passe doit contenir au moins 6 caractères')
-    .required('Password required'),
+  password: yup.string().required('Password required'),
 });
 
 const mergeCartAndOrdersAfterLogin = async () => {
   const guestId = localStorage.getItem("user_id");
   if (guestId) {
     try {
-      // Appeler l'endpoint de fusion de panier
       await api.post("/cart/merge", { guestId });
-      // Appeler l'endpoint de fusion de commande
       await api.post("/order/merge", { guestId });
-      
     } catch (error) {
       console.error("Erreur lors de la fusion des commandes", error);
     }
@@ -37,7 +32,15 @@ const mergeCartAndOrdersAfterLogin = async () => {
 
 const LoginPage: React.FC = () => {
   const dispatch = useAppDispatch();
+  const router = useRouter();
   const { loading, error } = useSelector((state: RootState) => state.auth);
+  const userProfile = useSelector((state: RootState) => state.user.profile); // <-- récupère le profil user (assure-toi que `userSlice` a bien le profil ici)
+
+  const [successSnackbarOpen, setSuccessSnackbarOpen] = useState(false);
+
+  const handleCloseSnackbar = () => {
+    setSuccessSnackbarOpen(false);
+  };
 
   const formik = useFormik({
     initialValues: {
@@ -48,14 +51,34 @@ const LoginPage: React.FC = () => {
     onSubmit: async (values) => {
       const result = await dispatch(loginUser(values));
       if (result.meta.requestStatus === "fulfilled") {
-        const guestId = localStorage.getItem("user_id");
-        // Appeler l'endpoint de fusion de panier
         await mergeCartAndOrdersAfterLogin();
-        // Ensuite, déclencher la récupération du profil utilisateur pour mettre à jour le store
-        dispatch(fetchUserProfile());
+        await dispatch(fetchUserProfile());
+        setSuccessSnackbarOpen(true);
       }
     },
   });
+
+  // Effet pour vérifier le rôle une fois le profil chargé
+  useEffect(() => {
+    if (userProfile?.role !== undefined && userProfile?.role !== null) {
+      setTimeout(() => {
+        switch (userProfile.role) {
+          case Role.Client:
+            router.push('/my-orders');
+            break;
+          case Role.Employee:
+            router.push('/take-order');
+            break;
+          case Role.Admin:
+            router.push('/dashboard');
+            break;
+          default:
+            router.push('/');
+        }
+      }, 1000); // délai pour laisser afficher le Snackbar
+    }
+  }, [userProfile, router]);
+  
 
   return (
     <Box
@@ -125,14 +148,25 @@ const LoginPage: React.FC = () => {
           </Typography>
         </Box>
       </Paper>
+
       <Box sx={{ mt: 2, textAlign: 'center' }}>
-          <Typography variant="body2">
-            email : test@test.com
-          </Typography>
-          <Typography variant="body2">
-            password : Password1,
-          </Typography>
-        </Box>
+        <Typography variant="body2">email client : test@test.com</Typography>
+        <Typography variant="body2">email employee : aaa@aaa.aa</Typography>
+        <Typography variant="body2">email admin : admin@admin.com</Typography>
+        <Typography variant="body2">password : Password1,</Typography>
+      </Box>
+
+      {/* Snackbar Success */}
+      <Snackbar
+        open={successSnackbarOpen}
+        autoHideDuration={3000}
+        onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert onClose={handleCloseSnackbar} severity="success" sx={{ width: '100%' }}>
+          Login Successful! Redirecting...
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };
