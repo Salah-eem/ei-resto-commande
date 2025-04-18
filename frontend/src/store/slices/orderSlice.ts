@@ -63,6 +63,22 @@ export const createOrder = createAsyncThunk(
   }
 );
 
+// 📌 Récupérer les commandes en préparation (pour les employés)
+export const fetchLiveOrders = createAsyncThunk(
+  "orders/fetchLiveOrders",
+  async (_, { rejectWithValue }) => {
+    try {
+      const response = await api.get("/order/live");
+      return response.data;
+    } catch (error: any) {
+      return rejectWithValue(
+        error.response?.data?.message || "Erreur lors du chargement des commandes live."
+      );
+    }
+  }
+);
+
+
 
 const orderSlice = createSlice({
   name: "orders",
@@ -108,6 +124,18 @@ const orderSlice = createSlice({
         state.error = action.payload as string;
       })
       
+      .addCase(fetchLiveOrders.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(fetchLiveOrders.fulfilled, (state, action) => {
+        state.loading = false;
+        state.orders = action.payload;
+      })
+      .addCase(fetchLiveOrders.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      })      
       ;
   },
 });

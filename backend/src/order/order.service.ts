@@ -7,6 +7,7 @@ import * as cron from 'node-cron';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { Restaurant, RestaurantSchema } from 'src/schemas/restaurant.schema';
 import { RestaurantService } from 'src/restaurant/restaurant.service';
+import { LiveOrdersGateway } from 'src/gateway/live-orders.gateway';
 
 
 @Injectable()
@@ -14,6 +15,7 @@ export class OrderService {
   constructor(@InjectModel(Order.name) private orderModel: Model<OrderDocument>,
               @InjectModel(Cart.name) private cartModel: Model<CartDocument>,
               private restaurantService: RestaurantService,
+              private readonly gateway: LiveOrdersGateway,
             ) {
             }
 
@@ -49,6 +51,7 @@ export class OrderService {
     console.log(orderId, orderStatus);
     const updatedOrder = await this.orderModel.findByIdAndUpdate(orderId, { orderStatus }, { new: true });
     if (!updatedOrder) throw new NotFoundException('Order not found');
+    this.gateway.sendUpdate()
     return updatedOrder;
   }
 
@@ -106,6 +109,7 @@ async createOrder(createOrderDto: CreateOrderDto): Promise<Order> {
   });
 
   await newOrder.save();
+  this.gateway.sendUpdate()
   return newOrder;
 }
 
@@ -123,4 +127,11 @@ async createOrder(createOrderDto: CreateOrderDto): Promise<Order> {
     // Retourner les commandes associées à l'utilisateur authentifié
     return this.orderModel.find({ userId });
   }
+
+  async findLiveOrders(): Promise<Order[]> {
+    return this.orderModel.find({
+      orderStatus: OrderStatus.IN_PREPARATION,
+    }).sort({ createdAt: 1 }).exec(); // triées de la plus ancienne à la plus récente
+  }
+  
 }

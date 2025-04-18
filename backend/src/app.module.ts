@@ -12,6 +12,7 @@ import { OrderModule } from './order/order.module';
 import { AddressModule } from './address/address.module';
 import { DeliveryGateway } from './gateway/delivery.gateway';
 import { RestaurantModule } from './restaurant/restaurant.module';
+import { LiveOrdersGateway } from './gateway/live-orders.gateway';
 
 @Module({
   imports: [
@@ -33,6 +34,6 @@ import { RestaurantModule } from './restaurant/restaurant.module';
   ],
   controllers: [],
     
-  providers: [ DeliveryGateway ],
+  providers: [ DeliveryGateway, LiveOrdersGateway ],
 })
 export class AppModule {}

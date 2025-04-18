@@ -28,6 +28,7 @@ import { Role } from "@/types/user";
 // MUI Icons
 import FormatListBulletedIcon from "@mui/icons-material/FormatListBulleted";
 import ShoppingCartIcon from "@mui/icons-material/ShoppingCart";
+import AccessTimeIcon from "@mui/icons-material/AccessTime";
 import AccountCircleIcon from "@mui/icons-material/AccountCircle";
 import CloseIcon from "@mui/icons-material/Close";
 import ListAltIcon from "@mui/icons-material/ListAlt";
@@ -112,6 +113,11 @@ const Header = () => {
                       <Link href="/take-order" style={{ textDecoration: "none" }}>
                         <Button startIcon={<AddShoppingCartIcon />} color="primary" sx={{ fontWeight: "bold" }}>
                           Take Order
+                        </Button>
+                      </Link>
+                      <Link href="/live-orders" style={{ textDecoration: "none" }}>
+                        <Button startIcon={<AccessTimeIcon />} color="primary" sx={{ fontWeight: "bold" }}>
+                          Live Orders
                         </Button>
                       </Link>
                       <Link href="/view-orders" style={{ textDecoration: "none" }}>

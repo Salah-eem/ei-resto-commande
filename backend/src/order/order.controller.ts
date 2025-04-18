@@ -5,7 +5,7 @@ import { JwtGuard } from 'src/auth/guard/jwt.guard';
 import { GetUser } from 'src/common/decorators/get-user.decorator';
 import { CreateOrderDto } from './dto/create-order.dto';
 
-// @UseGuards(JwtGuard)
+ @UseGuards(JwtGuard)
 @Controller('order')
 export class OrderController {
     constructor(private readonly orderService: OrderService) {}
@@ -15,7 +15,13 @@ export class OrderController {
     async getOrdersInDelivery() {
       return this.orderService.findOrdersInDelivery();
     }
-    
+
+    @Get('live')
+    async getLiveOrders() {
+      return this.orderService.findLiveOrders();
+    }
+
+  
     // 📌 Récupérer les commandes d'un utilisateur
     @Get('user/:userId')
     async getOrdersByUser(@Param('userId') userId: string): Promise<Order[]> {
