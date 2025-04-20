@@ -51,7 +51,7 @@ export class OrderService {
     console.log(orderId, orderStatus);
     const updatedOrder = await this.orderModel.findByIdAndUpdate(orderId, { orderStatus }, { new: true });
     if (!updatedOrder) throw new NotFoundException('Order not found');
-    this.gateway.sendUpdate()
+    this.gateway.sendUpdate();
     return updatedOrder;
   }
 
@@ -113,6 +113,12 @@ async createOrder(createOrderDto: CreateOrderDto): Promise<Order> {
   return newOrder;
 }
 
+  // 📌 Récupérer les commandes dans une plage de dates
+  async getOrdersByDateRange(start: Date, end: Date): Promise<Order[]> {
+    return this.orderModel.find({
+      createdAt: { $gte: start, $lte: end },
+    }).sort({ createdAt: -1 }).exec();
+  }
 
   // Fusionner les commandes d'un invité avec celles d'un utilisateur authent
   async mergeOrders(guestId: string, userId: string): Promise<Order[]> {
@@ -134,4 +140,38 @@ async createOrder(createOrderDto: CreateOrderDto): Promise<Order> {
     }).sort({ createdAt: 1 }).exec(); // triées de la plus ancienne à la plus récente
   }
   
+  async getOrdersWithCustomerDetails(start: Date, end: Date): Promise<any[]> {
+    // return this.orderModel.find({
+    //   createdAt: { $gte: start, $lte: end },
+    // }).sort({ createdAt: -1 }).exec();
+    return this.orderModel.aggregate([
+      {
+        $match: {
+          createdAt: { $gte: start, $lte: end },
+        },
+      },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'userId',
+          foreignField: '_id',
+          as: 'customer',
+        },
+      },
+      {
+        $unwind: '$customer',
+      },
+      {
+        $project: {
+          _id: 1,
+          totalAmount: 1,
+          orderStatus: 1,
+          orderType: 1,
+          createdAt: 1,
+          'customer.name': 1,
+          'customer.phone': 1,
+        },
+      },
+    ]).exec();
+  }
 }

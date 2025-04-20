@@ -1,11 +1,15 @@
-import { Controller, Get, Param, Post, Body, Put, Delete, UseGuards, Request, Patch } from '@nestjs/common';
+import { Controller, Get, Param, Post, Body, Put, Delete, UseGuards, Request, Patch, SetMetadata } from '@nestjs/common';
 import { OrderService } from './order.service';
 import { Order, OrderStatus } from 'src/schemas/order.schema';
 import { JwtGuard } from 'src/auth/guard/jwt.guard';
 import { GetUser } from 'src/common/decorators/get-user.decorator';
 import { CreateOrderDto } from './dto/create-order.dto';
+import { Role } from 'src/schemas/user.schema';
+import { startOfDay, endOfDay } from 'date-fns';
+import { Roles } from 'src/common/decorators/roles.decorator';
 
- @UseGuards(JwtGuard)
+
+@UseGuards(JwtGuard)
 @Controller('order')
 export class OrderController {
     constructor(private readonly orderService: OrderService) {}
@@ -21,6 +25,14 @@ export class OrderController {
       return this.orderService.findLiveOrders();
     }
 
+    // 📌 Récupérer toutes les commandes du jour
+    @Roles(Role.Admin, Role.Employee)
+    @Get('today')
+    async getTodayOrders() {
+      const start = startOfDay(new Date());
+      const end = endOfDay(new Date());
+      return this.orderService.getOrdersWithCustomerDetails(start, end);
+    }
   
     // 📌 Récupérer les commandes d'un utilisateur
     @Get('user/:userId')
@@ -56,7 +68,7 @@ export class OrderController {
 
     // 📌 Mettre à jour le statut d'une commande (Ex: après paiement)
     @Put(':orderId/status')
-    async updateOrderStatus(@Param('orderId') orderId: string, @Body('orderStatus') status: string): Promise<Order> {
+    async updateOrderStatus(@Param('orderId') orderId: string, @Body('status') status: string): Promise<Order> {
       console.log(orderId, status);
       return this.orderService.updateOrderStatus(orderId, status);
     }

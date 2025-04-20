@@ -13,6 +13,7 @@ import { AddressModule } from './address/address.module';
 import { DeliveryGateway } from './gateway/delivery.gateway';
 import { RestaurantModule } from './restaurant/restaurant.module';
 import { LiveOrdersGateway } from './gateway/live-orders.gateway';
+import { CommonModule } from './common/common.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { LiveOrdersGateway } from './gateway/live-orders.gateway';
     OrderModule,
     AddressModule,
     RestaurantModule,
+    CommonModule,
   ],
   controllers: [],
     

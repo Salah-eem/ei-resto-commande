@@ -5,7 +5,9 @@ import { Address, AddressSchema } from './address.schema';
 export type OrderDocument = Order & Document;
 
 export enum OrderStatus {
+  CONFIRMED = 'confirmed',
   IN_PREPARATION = 'in preparation',
+  PREPARED = 'prepared',
   READY_FOR_PICKUP = 'ready for pickup',
   READY_FOR_DELIVERY = 'ready for delivery',
   PICKED_UP = 'picked up',
