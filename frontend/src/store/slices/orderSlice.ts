@@ -53,7 +53,7 @@ export const createOrder = createAsyncThunk(
   "orders/createPhoneOrder",
   async (orderData: any, { rejectWithValue }) => {
     try {
-      const response = await api.post("/order/create-phone", orderData);
+      const response = await api.post("/order/create", orderData);
       return response.data;
     } catch (error: any) {
       return rejectWithValue(
@@ -78,6 +78,35 @@ export const fetchLiveOrders = createAsyncThunk(
   }
 );
 
+// 📌 Récupérer toutes les commandes du jour
+export const fetchTodayOrders = createAsyncThunk(
+  "orders/fetchTodayOrders",
+  async (_, { rejectWithValue }) => {
+    try {
+      const response = await api.get("/order/today");
+      return response.data;
+    } catch (error: any) {
+      return rejectWithValue(
+        error.response?.data?.message || "Erreur lors du chargement des commandes du jour."
+      );
+    }
+  }
+);
+
+// 📌 Mettre à jour le statut d'une commande
+export const updateOrderStatus = createAsyncThunk(
+  "orders/updateOrderStatus",
+  async ({ orderId, status }: { orderId: string; status: string }, { rejectWithValue }) => {
+    try {
+      const response = await api.put(`/order/${orderId}/status`, { status });
+      return response.data;
+    } catch (error: any) {
+      return rejectWithValue(
+        error.response?.data?.message || "Erreur lors de la mise à jour du statut de la commande."
+      );
+    }
+  }
+);
 
 
 const orderSlice = createSlice({
@@ -135,8 +164,34 @@ const orderSlice = createSlice({
       .addCase(fetchLiveOrders.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload as string;
-      })      
-      ;
+      })
+      .addCase(fetchTodayOrders.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(fetchTodayOrders.fulfilled, (state, action) => {
+        state.loading = false;
+        state.orders = action.payload;
+      })
+      .addCase(fetchTodayOrders.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      })
+      .addCase(updateOrderStatus.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(updateOrderStatus.fulfilled, (state, action) => {
+        state.loading = false;
+        const updatedOrder = action.payload;
+        state.orders = state.orders.map((order) =>
+          order._id === updatedOrder._id ? updatedOrder : order
+        );
+      })
+      .addCase(updateOrderStatus.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      });
   },
 });
 

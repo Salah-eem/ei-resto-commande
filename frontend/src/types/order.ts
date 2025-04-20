@@ -2,7 +2,9 @@ import { Address } from "./address";
 import { CartItem } from "./cartItem";
 
 export enum OrderStatus {
+  CONFIRMED = 'confirmed',
   IN_PREPARATION = 'in preparation',
+  PREPARED = 'prepared',
   READY_FOR_PICKUP = 'ready for pickup',
   READY_FOR_DELIVERY = 'ready for delivery',
   PICKED_UP = 'picked up',
@@ -33,9 +35,15 @@ export interface PositionHistory extends Address {
   timestamp: string; // Date ISO string
 }
 
+export interface Customer {
+  name: string;
+  phone: string;
+}
+
 export interface Order {
   _id: string;
   userId: string;
+  customer: Customer; // Added customer details
   items: CartItem[];
   totalAmount: number;
   orderStatus: OrderStatus;

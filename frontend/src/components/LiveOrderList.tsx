@@ -1,9 +1,11 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Order } from '@/types/order'
+import { Order, OrderStatus } from '@/types/order'
 import LiveOrderCard from './LiveOrderCard'
 import { Grid } from '@mui/material'
+import { useAppDispatch } from '@/store/slices/hooks';
+import { updateOrderStatus } from '@/store/slices/orderSlice';
 
 type Props = {
   orders: Order[]
@@ -15,6 +17,7 @@ export default function LiveOrderList({ orders }: Props) {
   )
 
   const [selected, setSelected] = useState({ orderIndex: 0, itemIndex: 0 })
+  const dispatch = useAppDispatch();
 
   const moveSelection = (direction: 'up' | 'down') => {
     let { orderIndex, itemIndex } = selected
@@ -56,6 +59,9 @@ export default function LiveOrderList({ orders }: Props) {
           newItems.splice(itemIndex, 1)
 
           if (newItems.length === 0) {
+            // Dispatch Redux action to update order status
+            dispatch(updateOrderStatus({ orderId: updated[orderIndex]._id, status: OrderStatus.PREPARED }));
+
             updated.splice(orderIndex, 1)
             // reset sélection
             return updated.length > 0
