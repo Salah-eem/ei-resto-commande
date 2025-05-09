@@ -1,12 +1,14 @@
 import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
 import { CategoryService } from './category.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
+import { Public } from 'src/common/decorators/public.decorator';
 
 @Controller('category')
 export class CategoryController {
 
     constructor(private categoryService: CategoryService) {}
 
+    @Public()
     @Get()
     async getAll() {
         return this.categoryService.getAll();
