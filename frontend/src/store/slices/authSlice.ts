@@ -9,7 +9,7 @@ interface AuthState {
 }
 
 const initialState: AuthState = {
-  token: localStorage?.getItem('access_token'),
+  token: typeof window !== 'undefined' ? localStorage.getItem('access_token') : null,
   loading: false,
   error: null,
 };
@@ -51,12 +51,16 @@ const authSlice = createSlice({
     // Déconnexion : supprime le token du store et du localStorage
     logout(state) {
       state.token = null;
-      localStorage.removeItem('access_token');
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('access_token');
+      }
     },
     // Permet de mettre à jour le token dans le store et le localStorage
     setToken(state, action) {
       state.token = action.payload;
-      localStorage.setItem('access_token', action.payload);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('access_token', action.payload);
+      }
     },
   },
   extraReducers: (builder) => {
@@ -68,7 +72,9 @@ const authSlice = createSlice({
       .addCase(loginUser.fulfilled, (state, action) => {
         state.loading = false;
         state.token = action.payload.access_token;
-        localStorage.setItem('access_token', action.payload.access_token);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('access_token', action.payload.access_token);
+        }
       })
       .addCase(loginUser.rejected, (state, action) => {
         state.loading = false;
@@ -81,7 +87,9 @@ const authSlice = createSlice({
       .addCase(signupUser.fulfilled, (state, action) => {
         state.loading = false;
         state.token = action.payload.access_token;
-        localStorage.setItem('access_token', action.payload.access_token);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('access_token', action.payload.access_token);
+        }
       })
       .addCase(signupUser.rejected, (state, action) => {
         state.loading = false;
