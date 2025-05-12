@@ -50,10 +50,10 @@ export const fetchOrder = createAsyncThunk(
 
 // 📌 Prendre une commande
 export const createOrder = createAsyncThunk(
-  "orders/createPhoneOrder",
+  "orders/createOrderByEmployee",
   async (orderData: any, { rejectWithValue }) => {
     try {
-      const response = await api.post("/order/create", orderData);
+      const response = await api.post("/order/create-by-employee", orderData);
       return response.data;
     } catch (error: any) {
       return rejectWithValue(

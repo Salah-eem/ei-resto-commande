@@ -1,12 +1,13 @@
 import { Controller, Get, Param, Post, Body, Put, Delete, UseGuards, Request, Patch, SetMetadata } from '@nestjs/common';
 import { OrderService } from './order.service';
-import { Order, OrderStatus } from 'src/schemas/order.schema';
+import { Order, OrderStatus, PaymentStatus } from 'src/schemas/order.schema';
 import { JwtGuard } from 'src/auth/guard/jwt.guard';
 import { GetUser } from 'src/common/decorators/get-user.decorator';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { Role } from 'src/schemas/user.schema';
 import { startOfDay, endOfDay } from 'date-fns';
 import { Roles } from 'src/common/decorators/roles.decorator';
+import { CreateOrderByEmployeeDto } from './dto/create-order-by-employee.dto';
 
 
 @UseGuards(JwtGuard)
@@ -58,7 +59,16 @@ export class OrderController {
     // 📌 Créer une commande après paiement
     @Post('create')
     async createOrder(@Body() createOrderDto: CreateOrderDto): Promise<Order> {
+      console.log('createOrderDto', createOrderDto);
       return this.orderService.createOrder(createOrderDto);
+    }
+
+    // 📌 Créer une commande par un employé
+    @Roles(Role.Admin, Role.Employee)
+    @Post('create-by-employee')
+    async createByEmployee(@Body() dto: CreateOrderByEmployeeDto): Promise<Order> {
+      console.log('createByEmployee', dto);
+      return this.orderService.createOrderByEmployee(dto);
     }
 
     @Patch(':id/position')

@@ -1,3 +1,4 @@
+import { Type } from 'class-transformer';
 import { IsNotEmpty, IsNumber, IsString } from 'class-validator';
 
 export class AddressDto {
@@ -11,6 +12,7 @@ export class AddressDto {
   @IsNotEmpty()
   street: string;
 
+  @Type(() => Number)
   @IsNumber()
   @IsNotEmpty()
   streetNumber: number;

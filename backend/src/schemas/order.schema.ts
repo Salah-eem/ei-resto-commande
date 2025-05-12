@@ -56,8 +56,11 @@ export class OrderItem {
 
 @Schema({ timestamps: true })
 export class Order extends Document {
-  @Prop({ required: true })
+  @Prop({ type: String })
   userId: string;
+
+  // @Prop({ type: String, enum: ['customer', 'employee'], default: 'customer' })
+  // source: 'customer' | 'employee';
 
   @Prop({ type: [OrderItem],})
   items: OrderItem[];
