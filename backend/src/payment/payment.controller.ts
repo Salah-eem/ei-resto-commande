@@ -3,7 +3,9 @@ import { Request, Response } from 'express';
 import { PaymentService } from './payment.service';
 import Stripe from 'stripe';
 import { AddressDto } from 'src/address/dto/address.dto';
+import { Public } from 'src/common/decorators/public.decorator';
 
+@Public()
 @Controller('payment')
 export class PaymentController {
   constructor(private readonly paymentService: PaymentService) {}

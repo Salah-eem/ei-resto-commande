@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document } from 'mongoose';
+import { Document, Types } from 'mongoose';
 import { Address, AddressSchema } from './address.schema';
 
 export type OrderDocument = Order & Document;
@@ -33,11 +33,19 @@ export enum OrderType {
   DELIVERY = 'delivery',
 }
 
+@Schema({ _id: false })
+export class Customer {
+  @Prop({ required: true })
+  name: string;
+
+  @Prop({ required: true })
+  phone: string;
+}
 
 @Schema()
 export class OrderItem {
   @Prop({ required: true })
-  productId: string; 
+  productId: string;
 
   @Prop({ required: true })
   name: string;
@@ -49,20 +57,24 @@ export class OrderItem {
   quantity: number;
 
   @Prop()
-  size?: string; 
+  size?: string;
+
   @Prop()
   image_url?: string;
 }
 
 @Schema({ timestamps: true })
 export class Order extends Document {
-  @Prop({ type: String })
-  userId: string;
+  @Prop({ type: Types.ObjectId, ref: 'User', required: false })
+  userId?: Types.ObjectId;
 
-  // @Prop({ type: String, enum: ['customer', 'employee'], default: 'customer' })
-  // source: 'customer' | 'employee';
+  @Prop({ type: String, enum: ['online', 'employee'], default: 'online' })
+  source: 'online' | 'employee';
 
-  @Prop({ type: [OrderItem],})
+  @Prop({ type: Customer, required: false })
+  customer?: Customer;
+
+  @Prop({ type: [OrderItem] })
   items: OrderItem[];
 
   @Prop({ required: true })
@@ -80,18 +92,13 @@ export class Order extends Document {
   @Prop({ type: String, enum: Object.values(OrderType), required: true })
   orderType: OrderType;
 
-  @Prop({ type: Date, default: Date.now })
-  createdAt: Date;
-
-  // 📍 Position actuelle du livreur (latitude & longitude)
   @Prop({
     type: AddressSchema,
-    required: false, // Toujours facultatif pour deliveryPosition (parce que le livreur peut ne pas avoir encore commencé)
+    required: false,
     default: null,
   })
   deliveryAddress: Address | null;
 
-  // 📅 Historique des positions (facultatif, utile pour traçabilité)
   @Prop({
     type: [
       {
@@ -103,7 +110,6 @@ export class Order extends Document {
   })
   positionHistory: (Address & { timestamp: Date })[];
 
-  // 🔄 Dernière mise à jour de la position
   @Prop({ type: Date, default: null })
   lastPositionUpdate: Date;
 }

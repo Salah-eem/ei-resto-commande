@@ -1,40 +1,48 @@
 import {
-    IsEnum,
-    IsOptional,
-    ValidateNested,
     IsString,
+    IsNotEmpty,
+    IsEnum,
+    ValidateNested,
+    IsOptional,
+    IsNumber,
     IsArray,
   } from 'class-validator';
-  import { Transform, Type } from 'class-transformer';
-  import {
-    OrderItem,
-    OrderType,
-    PaymentMethod,
-    PaymentStatus,
-  } from '../../schemas/order.schema';
-  import { AddressDto } from '../../address/dto/address.dto';
+  import { Type } from 'class-transformer';
+  import { OrderItem } from 'src/schemas/order.schema';
+  import { OrderType, PaymentMethod, PaymentStatus } from 'src/schemas/order.schema';
+  import { AddressDto } from 'src/address/dto/address.dto';
 import { OrderItemDto } from './order-item.dto';
   
-  export class CreateOrderByEmployeeDto {
-    @IsOptional()
+  // 👤 Infos du client quand c’est une commande prise par téléphone
+  export class CustomerDto {
     @IsString()
-    userId?: string;
+    @IsNotEmpty()
+    name: string;
+  
+    @IsString()
+    @IsNotEmpty()
+    phone: string;
+  }
+  
+  // 🧾 DTO pour une commande passée par un employé
+  export class CreateOrderByEmployeeDto {
+    @ValidateNested()
+    @Type(() => CustomerDto)
+    customer: CustomerDto;
+  
+    @IsArray()
+    @ValidateNested({ each: true })
+    @Type(() => OrderItemDto)
+    items: OrderItemDto[];
   
     @IsEnum(OrderType)
-    @Transform(({ value }) => value.toLowerCase())
     orderType: OrderType;
   
     @IsEnum(PaymentMethod)
-    @Transform(({ value }) => value.toLowerCase())
     paymentMethod: PaymentMethod;
   
     @IsEnum(PaymentStatus)
     paymentStatus: PaymentStatus;
-  
-    @ValidateNested({ each: true })
-    @Type(() => OrderItemDto)
-    @IsOptional()
-    items: OrderItemDto[];
   
     @IsOptional()
     @ValidateNested()

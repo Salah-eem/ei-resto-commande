@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { Cart, CartDocument } from 'src/schemas/cart.schema';
 import {
   Order,
@@ -124,7 +124,7 @@ export class OrderService {
     }));
 
     const newOrder = new this.orderModel({
-      userId,
+      userId: userId ? new Types.ObjectId(userId) : undefined,
       items: orderItems,
       totalAmount:
         orderItems.reduce(
@@ -145,14 +145,7 @@ export class OrderService {
 
   // Créer une commande par un employé
   async createOrderByEmployee(dto: CreateOrderByEmployeeDto): Promise<Order> {
-    const {
-      userId,
-      orderType,
-      paymentMethod,
-      paymentStatus,
-      items,
-      deliveryAddress,
-    } = dto;
+    const { customer, items, orderType, paymentMethod, paymentStatus, deliveryAddress } = dto;
 
     if (!items || items.length === 0) {
       throw new BadRequestException('Items list is empty.');
@@ -168,16 +161,16 @@ export class OrderService {
       deliveryFee;
 
     const newOrder = new this.orderModel({
-      userId: userId || null,
+      source: 'employee',
+      customer,
       items,
       totalAmount,
       orderStatus: OrderStatus.IN_PREPARATION,
-      paymentStatus,
       paymentMethod,
+      paymentStatus,
       orderType,
-      deliveryAddress,
-    });
-
+      deliveryAddress: orderType === OrderType.DELIVERY ? deliveryAddress : null,
+  });
     await newOrder.save();
     this.gateway.sendUpdate();
     return newOrder;
@@ -220,39 +213,48 @@ export class OrderService {
   }
 
   async getOrdersWithCustomerDetails(start: Date, end: Date): Promise<any[]> {
-    // return this.orderModel.find({
-    //   createdAt: { $gte: start, $lte: end },
-    // }).sort({ createdAt: -1 }).exec();
-    return this.orderModel
-      .aggregate([
-        {
-          $match: {
-            createdAt: { $gte: start, $lte: end },
+    return this.orderModel.aggregate([
+      {
+        $match: {
+          createdAt: { $gte: start, $lte: end },
+        },
+      },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'userId',
+          foreignField: '_id',
+          as: 'user',
+        },
+      },
+      {
+        $unwind: {
+          path: '$user',
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      {
+        $project: {
+          _id: 1,
+          totalAmount: 1,
+          orderStatus: 1,
+          orderType: 1,
+          createdAt: 1,
+          deliveryAddress: 1,
+          customer: {
+            name: {
+              $ifNull: ['$user.name', '$customer.name'],
+            },
+            phone: {
+              $ifNull: ['$user.phone', '$customer.phone'],
+            },
           },
         },
-        {
-          $lookup: {
-            from: 'users',
-            localField: 'userId',
-            foreignField: '_id',
-            as: 'customer',
-          },
-        },
-        {
-          $unwind: '$customer',
-        },
-        {
-          $project: {
-            _id: 1,
-            totalAmount: 1,
-            orderStatus: 1,
-            orderType: 1,
-            createdAt: 1,
-            'customer.name': 1,
-            'customer.phone': 1,
-          },
-        },
-      ])
-      .exec();
+      },
+    ])
+    .sort({ createdAt: -1 })
+    .exec();
   }
+  
+    
 }
