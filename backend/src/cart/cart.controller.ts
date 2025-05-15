@@ -2,7 +2,9 @@ import { Controller, Post, Get, Body, Param, Patch, Delete, BadRequestException,
 import { CartService } from './cart.service';
 import { JwtGuard } from 'src/auth/guard/jwt.guard';
 import { GetUser } from 'src/common/decorators/get-user.decorator';
+import { Public } from 'src/common/decorators/public.decorator';
 
+@Public()
 @Controller('cart')
 export class CartController {
   constructor(private readonly cartService: CartService) {}

@@ -110,7 +110,7 @@ const Header = () => {
                 <>
                   {isAdmin || isEmployee ? (
                     <>
-                      <Link href="/take-order" style={{ textDecoration: "none" }}>
+                      <Link href="/take-order/new" style={{ textDecoration: "none" }}>
                         <Button startIcon={<AddShoppingCartIcon />} color="primary" sx={{ fontWeight: "bold" }}>
                           Take Order
                         </Button>
@@ -157,22 +157,29 @@ const Header = () => {
               )}
 
               {!authToken && (
-                <Link href="/login" style={{ textDecoration: "none" }}>
-                  <Button
-                    color="secondary"
-                    sx={{
-                      fontWeight: "bold",
-                      border: "2px solid #008f68",
-                      borderRadius: "4px",
-                      backgroundColor: "#008f68",
-                      color: "#fff",
-                      ":hover": { backgroundColor: "#fdb913", color: "#fff", borderColor: "#fdb913" },
-                      transition: "background-color 0.3s",
-                    }}
-                  >
-                    Login
-                  </Button>
-                </Link>
+                <>
+                  <IconButton color="primary" onClick={() => setCartOpen(true)}>
+                    <Badge badgeContent={totalItems} color="secondary">
+                      <ShoppingCartIcon />
+                    </Badge>
+                  </IconButton>
+                  <Link href="/login" style={{ textDecoration: "none" }}>
+                    <Button
+                      color="secondary"
+                      sx={{
+                        fontWeight: "bold",
+                        border: "2px solid #008f68",
+                        borderRadius: "4px",
+                        backgroundColor: "#008f68",
+                        color: "#fff",
+                        ":hover": { backgroundColor: "#fdb913", color: "#fff", borderColor: "#fdb913" },
+                        transition: "background-color 0.3s",
+                      }}
+                    >
+                      Login
+                    </Button>
+                  </Link>
+                </>
               )}
             </Box>
           </Toolbar>

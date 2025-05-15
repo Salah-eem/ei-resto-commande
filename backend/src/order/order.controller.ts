@@ -42,9 +42,14 @@ export class OrderController {
     }
 
     // 📌 Récupérer une commande
-    @Get(':orderId')
-    async getOrder(@Param('orderId') orderId: string): Promise<Order> {
-      return this.orderService.getOrder(orderId);
+    // @Get(':orderId')
+    // async getOrder(@Param('orderId') orderId: string): Promise<Order> {
+    //   return this.orderService.getOrder(orderId);
+    // }
+
+    @Get(':id')
+    async getOrderById(@Param('id') id: string) {
+      return this.orderService.getOrderWithCustomer(id);
     }
 
     // 📌 Fusionner les commandes d'un invité avec un utilisateur connecté
@@ -69,6 +74,12 @@ export class OrderController {
     async createByEmployee(@Body() dto: CreateOrderByEmployeeDto): Promise<Order> {
       console.log('createByEmployee', dto);
       return this.orderService.createOrderByEmployee(dto);
+    }
+
+    // Mettre à jour une commande
+    @Put(':id')
+    async updateOrder(@Param('id') id: string, @Body() orderData: Partial<Order>) {
+      return this.orderService.updateOrder(id, orderData);
     }
 
     @Patch(':id/position')

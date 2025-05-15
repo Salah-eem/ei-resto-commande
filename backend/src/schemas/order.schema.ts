@@ -44,8 +44,8 @@ export class Customer {
 
 @Schema()
 export class OrderItem {
-  @Prop({ required: true })
-  productId: string;
+  @Prop({ type: Types.ObjectId, ref: 'Product', required: true })
+  productId: Types.ObjectId;
 
   @Prop({ required: true })
   name: string;
@@ -112,6 +112,9 @@ export class Order extends Document {
 
   @Prop({ type: Date, default: null })
   lastPositionUpdate: Date;
+
+  @Prop({ type: Date, default: Date.now })
+  createdAt: Date;
 }
 
 export const OrderSchema = SchemaFactory.createForClass(Order);

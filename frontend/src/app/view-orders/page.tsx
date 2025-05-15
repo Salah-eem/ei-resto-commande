@@ -19,9 +19,10 @@ import { format, parseISO } from 'date-fns';
 import { RootState } from '@/store/store';
 import { fetchTodayOrders } from '@/store/slices/orderSlice';
 import { useAppDispatch, useAppSelector } from '@/store/slices/hooks';
-import { Order, OrderStatus, OrderType } from '@/types/order';
+import { Order, OrderStatus, OrderType, PaymentStatus } from '@/types/order';
+import { useRouter } from 'next/navigation';
 
-type OrderKey = keyof Pick<Order, 'orderStatus' | 'totalAmount' | 'orderType' | 'createdAt'> | 'customer.name';
+type OrderKey = keyof Pick<Order, 'orderStatus' | 'totalAmount' | 'orderType' | 'createdAt'> | 'customer.name' | 'customer.phone';
 
 const ViewOrdersPage = () => {
   const dispatch = useAppDispatch();
@@ -30,6 +31,7 @@ const ViewOrdersPage = () => {
   const [orderBy, setOrderBy] = useState<OrderKey>('createdAt');
   const [orderDirection, setOrderDirection] = useState<'asc' | 'desc'>('desc');
   const [searchQuery, setSearchQuery] = useState('');
+  const router = useRouter();
 
   useEffect(() => {
     dispatch(fetchTodayOrders());
@@ -65,12 +67,14 @@ const ViewOrdersPage = () => {
     const name = order.customer?.name?.toLowerCase() || '';
     const phone = order.customer?.phone || '';
     const address = `${order.deliveryAddress?.street || ''} ${order.deliveryAddress?.city || ''} ${order.deliveryAddress?.postalCode || ''}`.toLowerCase();
+    const totalAmount = order.totalAmount.toString();
 
     return (
       id.includes(query) ||
       name.includes(query) ||
       phone.includes(query) ||
-      address.includes(query)
+      address.includes(query) ||
+      totalAmount.includes(query)
     );
   });
 
@@ -82,6 +86,10 @@ const ViewOrdersPage = () => {
       case 'customer.name':
         valA = a.customer?.name || '';
         valB = b.customer?.name || '';
+        break;
+      case 'customer.phone':
+        valA = a.customer?.phone || '';
+        valB = b.customer?.phone || '';
         break;
       case 'orderStatus':
         valA = a.orderStatus;
@@ -116,7 +124,7 @@ const ViewOrdersPage = () => {
       </Typography>
 
       <TextField
-        label="Search by ID, name, phone or address"
+        label="Search by ID, name, phone, address or total amount"
         value={searchQuery}
         onChange={(e) => setSearchQuery(e.target.value)}
         variant="outlined"
@@ -145,7 +153,15 @@ const ViewOrdersPage = () => {
                     Client
                   </TableSortLabel>
                 </TableCell>
-                <TableCell>Phone</TableCell>
+                <TableCell>
+                  <TableSortLabel
+                    active={orderBy === 'customer.phone'}
+                    direction={orderBy === 'customer.phone' ? orderDirection : 'asc'}
+                    onClick={() => handleSort('customer.phone')}
+                  >
+                    Phone
+                  </TableSortLabel>
+                </TableCell>
                 <TableCell>
                   <TableSortLabel
                     active={orderBy === 'orderStatus'}
@@ -155,6 +171,7 @@ const ViewOrdersPage = () => {
                     Status
                   </TableSortLabel>
                 </TableCell>
+                <TableCell>Payment</TableCell>
                 <TableCell>
                   <TableSortLabel
                     active={orderBy === 'totalAmount'}
@@ -174,6 +191,7 @@ const ViewOrdersPage = () => {
                   </TableSortLabel>
                 </TableCell>
                 <TableCell>Address</TableCell>
+                <TableCell>Taked By</TableCell>
                 <TableCell>
                   <TableSortLabel
                     active={orderBy === 'createdAt'}
@@ -187,12 +205,20 @@ const ViewOrdersPage = () => {
             </TableHead>
             <TableBody>
               {sortedOrders.map((order: Order) => (
-                <TableRow key={order._id}>
+                <TableRow
+                  key={order._id}
+                  hover
+                  sx={{ cursor: 'pointer' }}
+                  onClick={() => router.push(`/take-order/${order._id}`)}
+                >
                   <TableCell>{getShortId(order._id)}</TableCell>
                   <TableCell>{order.customer?.name || '—'}</TableCell>
                   <TableCell>{order.customer?.phone || '—'}</TableCell>
                   <TableCell>
                     <Chip label={order.orderStatus} color={getStatusColor(order.orderStatus)} size="small" />
+                  </TableCell>
+                  <TableCell>
+                    <Chip label={order.paymentStatus} color={order.paymentStatus === PaymentStatus.COMPLETED ? 'success' : 'error'} size="small" />
                   </TableCell>
                   <TableCell>{order.totalAmount.toFixed(2)} €</TableCell>
                   <TableCell>{order.orderType === OrderType.PICKUP ? 'Pickup' : 'Delivery'}</TableCell>
@@ -201,6 +227,7 @@ const ViewOrdersPage = () => {
                       ? `${order.deliveryAddress.street || ''} ${order.deliveryAddress.streetNumber || ''}, ${order.deliveryAddress.city || ''}`
                       : '—'}
                   </TableCell>
+                  <TableCell>{order.source}</TableCell>
                   <TableCell>{format(parseISO(order.createdAt), 'dd/MM/yyyy HH:mm')}</TableCell>
                 </TableRow>
               ))}

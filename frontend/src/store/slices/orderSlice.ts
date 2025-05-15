@@ -108,6 +108,18 @@ export const updateOrderStatus = createAsyncThunk(
   }
 );
 
+// Mettre à jour une commande
+export const updateOrder = createAsyncThunk(
+  'orders/updateOrder',
+  async ({ orderId, orderData }: { orderId: string; orderData: Partial<Order> }, { rejectWithValue }) => {
+    try {
+      const response = await api.put(`/order/${orderId}`, orderData);
+      return response.data;
+    } catch (error: any) {
+      return rejectWithValue(error.response?.data || 'Failed to update order');
+    }
+  }
+);
 
 const orderSlice = createSlice({
   name: "orders",
@@ -189,6 +201,21 @@ const orderSlice = createSlice({
         );
       })
       .addCase(updateOrderStatus.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      })
+      .addCase(updateOrder.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(updateOrder.fulfilled, (state, action) => {
+        state.loading = false;
+        const updatedOrder = action.payload;
+        state.orders = state.orders.map((order) =>
+          order._id === updatedOrder._id ? updatedOrder : order
+        );
+      })
+      .addCase(updateOrder.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload as string;
       });

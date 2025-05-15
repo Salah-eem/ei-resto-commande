@@ -43,6 +43,7 @@ export interface Customer {
 export interface Order {
   _id: string;
   userId: string;
+  source: string;
   customer: Customer; // Added customer details
   items: CartItem[];
   totalAmount: number;

@@ -4,6 +4,7 @@ import { Autocomplete, TextField } from '@mui/material';
 
 interface Props {
   label?: string;
+  value?: string;
   onSelect: (address: {
     street: string;
     city: string;
@@ -14,9 +15,14 @@ interface Props {
   }) => void;
 }
 
-const NominatimAutocomplete: React.FC<Props> = ({ label = 'Adresse', onSelect }) => {
-  const [input, setInput] = useState('');
+const NominatimAutocomplete: React.FC<Props> = ({ label = 'Adresse', value = '', onSelect }) => {
+  const [input, setInput] = useState(value); // ✅ Initialise avec `value`
   const [options, setOptions] = useState<any[]>([]);
+
+  // ✅ Synchronise si `value` change
+  useEffect(() => {
+    setInput(value);
+  }, [value]);
 
   useEffect(() => {
     if (input.length < 3) return;
@@ -48,6 +54,7 @@ const NominatimAutocomplete: React.FC<Props> = ({ label = 'Adresse', onSelect })
       fullWidth
       options={options}
       getOptionLabel={(option) => option.display_name || ''}
+      inputValue={input} // ✅ rend le champ contrôlé
       onInputChange={(_, value) => setInput(value)}
       onChange={(_, value) => {
         if (!value || !value.address) return;
