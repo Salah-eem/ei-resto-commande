@@ -3,11 +3,16 @@ import { Transform, Type } from 'class-transformer';
 import { OrderItem, OrderType, PaymentMethod, PaymentStatus } from 'src/schemas/order.schema';
 import { AddressDto } from 'src/address/dto/address.dto';
 import { CartItem } from 'src/schemas/cart.schema';
+import { CustomerDto } from './create-order-by-employee.dto';
 
 export class CreateOrderDto {
   @IsOptional()
   @IsString()
   userId?: string;
+
+  @ValidateNested()
+  @Type(() => CustomerDto)
+  customer: CustomerDto;
 
   @IsEnum(OrderType)
   @Transform(({ value }) => value.toLowerCase())

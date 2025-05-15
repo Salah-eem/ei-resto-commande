@@ -359,7 +359,7 @@ const TakeOrderPage: React.FC = () => {
                     <TextField
                       label="Phone Number"
                       name="phoneNumber"
-                      type="number"
+                      type="tel"
                       value={values.phoneNumber || ""}
                       onChange={handleChange}
                       fullWidth

@@ -4,6 +4,7 @@ import { PaymentService } from './payment.service';
 import Stripe from 'stripe';
 import { AddressDto } from 'src/address/dto/address.dto';
 import { Public } from 'src/common/decorators/public.decorator';
+import { CustomerDto } from 'src/order/dto/create-order-by-employee.dto';
 
 @Public()
 @Controller('payment')
@@ -13,13 +14,14 @@ export class PaymentController {
   // ✅ Paiement via Stripe
   @Post('stripe')
   async createStripePayment(@Body() body: any) {
-    const { userId, cartItems, totalAmount, orderType, address } = body;
-    if (!userId || !cartItems || !totalAmount || !orderType || !address) {
-      throw new BadRequestException('Informations de paiement invalides');
+    const { userId, customer, cartItems, totalAmount, orderType, address } = body;
+    if (!userId || !cartItems || !totalAmount || !orderType) {
+      throw new BadRequestException('Informations de paiement invalidess');
     }
 
     return this.paymentService.processStripePayment(
       userId,
+      customer as CustomerDto,
       cartItems,
       totalAmount,
       orderType,
@@ -44,8 +46,11 @@ export class PaymentController {
        const address: AddressDto = object.metadata?.address
          ? JSON.parse(object.metadata.address)
          : undefined;
+        const customer: CustomerDto = object.metadata?.customer
+          ? JSON.parse(object.metadata.customer)
+          : undefined;
 
-       await this.paymentService.handleStripeWebhook(event, orderType, address);
+       await this.paymentService.handleStripeWebhook(event, customer, orderType, address);
        res.json({ received: true });
      } catch (err) {
        console.error('❌ Erreur Webhook:', err);
@@ -56,9 +61,9 @@ export class PaymentController {
   // ✅ Paiement via PayPal
   @Post('paypal')
   async createPayPalPayment(@Body() body: any) {
-    const { userId, cartItems, totalAmount, orderType, address } = body;
-    if (!userId || !cartItems || !totalAmount || !orderType || !address) {
-      throw new BadRequestException('Informations de paiement invalides');
+    const { userId, customer, cartItems, totalAmount, orderType } = body;
+    if (!userId || !cartItems || !totalAmount || !orderType || !customer) {
+      throw new BadRequestException('Informations de paiement invalidesp');
     }
 
     return this.paymentService.processPayPalPayment(
@@ -72,14 +77,15 @@ export class PaymentController {
   // ✅ Capture du paiement PayPal
   @Post('paypal/capture')
   async capturePayPal(@Body() body: any) {
-    const { orderId, userId, orderType, address } = body;
-    if (!orderId || !userId || !orderType || !address) {
+    const { orderId, userId, customer, orderType, address } = body;
+    if (!orderId || !userId || !orderType || !customer) {
       throw new BadRequestException('Données de capture PayPal invalides');
     }
 
     return this.paymentService.capturePayPalPayment(
       orderId,
       userId,
+      customer,
       orderType,
       address as AddressDto
     );
@@ -88,13 +94,14 @@ export class PaymentController {
   // ✅ Paiement en espèces
   @Post('cash')
   async processCashPayment(@Body() body: any) {
-    const { userId, orderType, address } = body;
-    if (!userId || !orderType || !address) {
+    const { userId, customer, orderType, address } = body;
+    if (!userId || !orderType || !customer) {
       throw new BadRequestException('Données de paiement en espèces invalides');
     }
 
     return this.paymentService.processCashPayment(
       userId,
+      customer,
       orderType,
       address as AddressDto
     );

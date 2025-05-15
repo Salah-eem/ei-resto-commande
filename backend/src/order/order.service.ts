@@ -212,7 +212,7 @@ export class OrderService {
 
   // Créer une commande après paiement réussi
   async createOrder(createOrderDto: CreateOrderDto): Promise<Order> {
-    const { userId, orderType, paymentMethod, paymentStatus, deliveryAddress } =
+    const { userId, customer, orderType, paymentMethod, paymentStatus, deliveryAddress } =
       createOrderDto;
     const cart = await this.cartModel.findOne({ userId });
 
@@ -237,6 +237,7 @@ export class OrderService {
 
     const newOrder = new this.orderModel({
       userId: (userId && Types.ObjectId.isValid(userId)) ? new Types.ObjectId(userId) : userId,
+      customer,
       items: orderItems,
       totalAmount:
         orderItems.reduce(

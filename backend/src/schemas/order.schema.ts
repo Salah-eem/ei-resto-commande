@@ -97,7 +97,7 @@ export class Order extends Document {
     required: false,
     default: null,
   })
-  deliveryAddress: Address | null;
+  deliveryAddress?: Address | null;
 
   @Prop({
     type: [
