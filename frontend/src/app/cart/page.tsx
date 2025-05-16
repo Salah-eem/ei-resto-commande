@@ -189,7 +189,7 @@ const CartPage: React.FC = () => {
     },
   });
 
-  if (cartLoading)
+  if (cartLoading && cartItems.length === 0)
     return (
       <Box
         sx={{
@@ -210,7 +210,30 @@ const CartPage: React.FC = () => {
     );
 
   return (
-    <Box sx={{ p: { xs: 2, md: 4 }, maxWidth: 1200, mx: "auto" }}>
+    <Box
+      sx={{
+        p: { xs: 2, md: 4 },
+        maxWidth: 1200,
+        mx: "auto",
+        position: "relative",
+      }}
+    >
+      {cartLoading && cartItems.length > 0 && (
+        <Box
+          position="absolute"
+          top={0}
+          left={0}
+          width="100%"
+          height="100%"
+          display="flex"
+          justifyContent="center"
+          alignItems="center"
+          bgcolor="rgba(255,255,255,0.5)"
+          zIndex={2}
+        >
+          <CircularProgress />
+        </Box>
+      )}
       <Typography variant="h4" textAlign="center" gutterBottom>
         <ShoppingCartIcon fontSize="large" /> Your Cart
       </Typography>
@@ -260,7 +283,25 @@ const CartPage: React.FC = () => {
                     >
                       <RemoveIcon />
                     </IconButton>
-                    <Typography>{item.quantity}</Typography>
+                    <TextField
+                      type="number"
+                      size="small"
+                      value={item.quantity}
+                      inputProps={{ min: 1, style: { width: 50, textAlign: "center" } }}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value, 10);
+                        if (!isNaN(val) && val > 0) {
+                          handleQuantityChange(item.productId, item.size, val);
+                        }
+                      }}
+                      onBlur={(e) => {
+                        // Si l'utilisateur efface tout, on remet 1
+                        if (!e.target.value || parseInt(e.target.value, 10) < 1) {
+                          handleQuantityChange(item.productId, item.size, 1);
+                        }
+                      }}
+                      sx={{ mx: 1 }}
+                    />
                     <IconButton
                       onClick={() =>
                         handleQuantityChange(
