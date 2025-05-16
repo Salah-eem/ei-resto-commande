@@ -121,6 +121,19 @@ export const updateOrder = createAsyncThunk(
   }
 );
 
+export const validateOrderItem = createAsyncThunk(
+  'orders/validateOrderItem',
+  async ({ orderId, itemId }: { orderId: string; itemId: string }, { rejectWithValue }) => {
+    try {
+      const response = await api.patch(`/order/${orderId}/validate-item`, { itemId });
+      return response.data;
+    } catch (error: any) {
+      return rejectWithValue(error.response?.data || 'Failed to validate order item');
+    }
+  }
+);
+
+
 const orderSlice = createSlice({
   name: "orders",
   initialState,

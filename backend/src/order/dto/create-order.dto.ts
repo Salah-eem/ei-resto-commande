@@ -1,6 +1,6 @@
 import { IsEnum, IsNotEmpty, IsNumber, IsOptional, IsString, ValidateNested } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
-import { OrderItem, OrderType, PaymentMethod, PaymentStatus } from 'src/schemas/order.schema';
+import { OrderType, PaymentMethod, PaymentStatus } from 'src/schemas/order.schema';
 import { AddressDto } from 'src/address/dto/address.dto';
 import { CartItem } from 'src/schemas/cart.schema';
 import { CustomerDto } from './create-order-by-employee.dto';

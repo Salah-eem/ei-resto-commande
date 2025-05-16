@@ -8,6 +8,7 @@ import { Role } from 'src/schemas/user.schema';
 import { startOfDay, endOfDay } from 'date-fns';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { CreateOrderByEmployeeDto } from './dto/create-order-by-employee.dto';
+import { Public } from 'src/common/decorators/public.decorator';
 
 
 @UseGuards(JwtGuard)
@@ -87,14 +88,25 @@ export class OrderController {
       return this.orderService.updatePosition(id, { lat: body.lat, lng: body.lng });
     }
 
+    @Patch(':id/validate-item')
+    async validateItem(
+      @Param('id') orderId: string,
+      @Body() body: { itemId: string },
+    ) {
+      console.log('order id', orderId);
+      console.log('item id', body.itemId);
+      return this.orderService.validateOrderItem(orderId, body.itemId);
+    }
+
     // 📌 Mettre à jour le statut d'une commande (Ex: après paiement)
     @Put(':orderId/status')
     async updateOrderStatus(@Param('orderId') orderId: string, @Body('status') status: string): Promise<Order> {
       console.log(orderId, status);
-      return this.orderService.updateOrderStatus(orderId, status);
+      return this.orderService.updateOrderStatus(orderId, status as OrderStatus);
     }
 
     // supprimer toutes les commandes
+    @Public()
     @Delete('deleteAll')
     async deleteAllOrders() {
       return this.orderService.deleteAllOrders();

@@ -4,333 +4,360 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import mongoose, { Model, Types } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { Cart, CartDocument } from 'src/schemas/cart.schema';
 import {
   Order,
   OrderDocument,
-  OrderItem,
   OrderStatus,
   OrderType,
-  PaymentMethod,
-  PaymentStatus,
 } from 'src/schemas/order.schema';
-import * as cron from 'node-cron';
-import { CreateOrderDto } from './dto/create-order.dto';
-import { Restaurant, RestaurantSchema } from 'src/schemas/restaurant.schema';
 import { RestaurantService } from 'src/restaurant/restaurant.service';
 import { LiveOrdersGateway } from 'src/gateway/live-orders.gateway';
+import { CreateOrderDto } from './dto/create-order.dto';
 import { CreateOrderByEmployeeDto } from './dto/create-order-by-employee.dto';
-import { User, UserDocument } from 'src/schemas/user.schema';
+import { OrderItem, OrderItemDocument } from 'src/schemas/order-item.schema';
 
 @Injectable()
 export class OrderService {
   constructor(
-    @InjectModel(Order.name) private orderModel: Model<OrderDocument>,
-    @InjectModel(Cart.name) private cartModel: Model<CartDocument>,
-    @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
-    private restaurantService: RestaurantService,
+    @InjectModel(Order.name) private readonly orderModel: Model<OrderDocument>,
+    @InjectModel(Cart.name) private readonly cartModel: Model<CartDocument>,
+    @InjectModel(OrderItem.name)
+    private readonly orderItemModel: Model<OrderItemDocument>,
+    private readonly restaurantService: RestaurantService,
     private readonly gateway: LiveOrdersGateway,
   ) {}
 
-  // Créer une nouvelle commande
-  // async createOrder(userId: string, items: any[], totalAmount: number): Promise<Order> {
-  //   const order = new this.orderModel({ userId, items, totalAmount, status: OrderStatus.IN_PROGRESS, paymentStatus: PaymentStatus.PENDING });
-  //   return order.save();
-  // }
 
-  updatePosition(id: string, position: { lat: number; lng: number }) {
-    return this.orderModel.findByIdAndUpdate(id, {
-      deliveryPosition: position,
-    });
-  }
-
-  // Récupérer toutes les commandes d'un utilisateur
-  async getOrdersByUser(userId: string): Promise<Order[]> {
-    return this.orderModel.find({ userId }).sort({ createdAt: -1 }).exec();
-  }
-
-  // Récupérer une commande
-  async getOrder(orderId: string): Promise<Order> {
-    const order = await this.orderModel.findById(orderId).exec();
-    if (!order) throw new NotFoundException('Order not found');
-    return order;
-  }
-
-  // Récupérer une commande avec les détails du client
-  async getOrderWithCustomer(id: string): Promise<any> {
-    // 1. Charger la commande sans populate
-    const order = await this.orderModel
-      .findById(id)
-      .populate({
-        path: 'items.productId',
-        select: 'name image_url productType basePrice sizes category',
-        populate: {
-          path: 'category',
-          model: 'Category',
-          select: 'name',
-        },
-      })
-      .lean();
-  
-    if (!order) return null;
-  
-    // 2. Si userId est un ObjectId valide, peupler l'utilisateur
-    let userData: any = null;
-  
-    if (order.userId && Types.ObjectId.isValid(order.userId)) {
-      const user = await this.userModel
-        .findById(order.userId)
-        .select('firstName phone')
-        .lean();
-      userData = user ?? null;
-    }
-  
-    // 3. Traiter les items
-    order.items = order.items.map(item => {
-      const prod = item.productId as any;
-  
-      let computedPrice = item.price;
-  
-      if (prod.productType === 'multiple_sizes' && prod.sizes) {
-        const match = prod.sizes.find((s: any) => s.name === item.size);
-        if (match) computedPrice = match.price;
-      } else if (prod.productType === 'single_price' && prod.basePrice != null) {
-        computedPrice = prod.basePrice;
-      }
-  
-      return {
-        productId: prod._id,
-        name: prod.name,
-        price: computedPrice,
-        quantity: item.quantity,
-        size: item.size,
-        image_url: prod.image_url,
-        category: prod.category, // { _id, name }
-      };
-    });
-  
-    // 4. Retourner l'objet final
-    return {
-      _id:               order._id,
-      source:            order.source,
-      items:             order.items,
-      totalAmount:       order.totalAmount,
-      orderStatus:       order.orderStatus,
-      paymentMethod:     order.paymentMethod,
-      paymentStatus:     order.paymentStatus,
-      orderType:         order.orderType,
-      deliveryAddress:   order.deliveryAddress,
-      positionHistory:   order.positionHistory,
-      lastPositionUpdate:order.lastPositionUpdate,
-      customer: {
-        name:  userData?.firstName ?? order.customer?.name,
-        phone: userData?.phone     ?? order.customer?.phone,
-      },
-    };
-  }
-
-  async findOrdersInDelivery() {
+  async findOrdersInDelivery(): Promise<Order[]> {
     return this.orderModel.find({
       orderStatus: OrderStatus.READY_FOR_DELIVERY,
       orderType: OrderType.DELIVERY,
+    }).exec();
+  }
+
+  async findLiveOrders(): Promise<any[]> {
+    const orders = await this.orderModel
+      .find({ orderStatus: OrderStatus.IN_PREPARATION })
+      .sort('createdAt')
+      .populate({
+        path: 'items',
+        model: 'OrderItem',
+        populate: {
+          path: 'productId',
+          model: 'Product',
+          select: 'name image_url productType basePrice sizes category',
+          populate: {
+            path: 'category',
+            model: 'Category',
+            select: 'name',
+          },
+        },
+      })
+      .exec();
+
+    return orders.map(order => {
+      const items = (order.items as any[]).map(oi => {
+        const prod = oi.productId as any;
+        let computedPrice = oi.price;
+
+        if (prod.productType === 'multiple_sizes' && prod.sizes) {
+          const sizeMatch = prod.sizes.find((s: any) => s.name === oi.size);
+          if (sizeMatch) computedPrice = sizeMatch.price;
+        } else if (prod.productType === 'single_price' && prod.basePrice != null) {
+          computedPrice = prod.basePrice;
+        }
+
+        return {
+          _id: oi._id,
+          productId: prod._id,
+          name: prod.name,
+          price: computedPrice,
+          quantity: oi.quantity,
+          size: oi.size,
+          image_url: prod.image_url,
+          category: prod.category,
+          preparedQuantity: oi.preparedQuantity ?? 0,
+          isPrepared: oi.isPrepared ?? false,
+        };
+      });
+
+      const totalAmount = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
+      return {
+        _id: order._id,
+        source: order.source,
+        customer: order.customer,
+        items,
+        totalAmount,
+        orderStatus: order.orderStatus,
+        paymentMethod: order.paymentMethod,
+        paymentStatus: order.paymentStatus,
+        orderType: order.orderType,
+        deliveryAddress: order.deliveryAddress,
+        lastPositionUpdate: order.lastPositionUpdate,
+        positionHistory: order.positionHistory,
+        createdAt: order.createdAt,
+      };
     });
   }
 
-  // Mettre à jour le statut d'une commande
-  async updateOrderStatus(
-    orderId: string,
-    orderStatus: string,
-  ): Promise<Order> {
-    console.log(orderId, orderStatus);
-    const updatedOrder = await this.orderModel.findByIdAndUpdate(
-      orderId,
-      { orderStatus },
-      { new: true },
+  async getOrdersWithCustomerDetails(start: Date, end: Date): Promise<any[]> {
+    // même implémentation que précédemment, renvoyant la liste enrichie
+    return this._fetchOrdersWithCustomer(start, end);
+  }
+
+  async getOrdersByUser(userId: string): Promise<Order[]> {
+    return this.orderModel.find({ userId }).sort('-createdAt').exec();
+  }
+
+  async getOrderWithCustomer(id: string): Promise<any> {
+    return this._fetchSingleOrderWithCustomer(id);
+  }
+
+  async createOrder(dto: CreateOrderDto): Promise<Order> {
+    return this._create({ dto, isEmployee: false });
+  }
+
+  async createOrderByEmployee(dto: CreateOrderByEmployeeDto): Promise<Order> {
+    return this._create({ dto, isEmployee: true });
+  }
+
+  async updateOrder(id: string, dto: Partial<Omit<Order, 'totalAmount'>>): Promise<Order> {
+    return this._update(id, dto);
+  }
+
+  private async _update(id: string, dto: Partial<Order>): Promise<Order> {
+    return this.orderModel
+      .findByIdAndUpdate(id, dto, { new: true })
+      .orFail(() => new NotFoundException('Order not found'))
+      .then(o => {
+        this.gateway.sendUpdate();
+        return o;
+      });
+  }
+
+  async updatePosition(id: string, pos: { lat: number; lng: number }): Promise<Order> {
+    return this.orderModel
+      .findByIdAndUpdate(id, { deliveryPosition: pos }, { new: true })
+      .orFail(() => new NotFoundException('Order not found'));
+  }
+
+  async validateOrderItem(orderId: string, itemId: string): Promise<Order> {
+    // même logique de validation et bascule de statut
+    const item = await this.orderItemModel.findById(itemId).orFail(
+      () => new NotFoundException('Item not found'),
     );
-    if (!updatedOrder) throw new NotFoundException('Order not found');
-    this.gateway.sendUpdate();
-    return updatedOrder;
-  }
-
-  // Mettre à jour une commande
-  async updateOrder(
-    orderId: string,
-    orderData: Partial<Order>,
-  ): Promise<Order> {
-    // 1️⃣ Récupère la commande existante
-    const order = await this.orderModel.findById(orderId).exec();
-    if (!order) throw new NotFoundException('Order not found');
-
-    // 2️⃣ Merge des champs (on ignore totalAmount côté front)
-    const { totalAmount: _ignore, ...rest } = orderData;
-    Object.assign(order, rest);
-
-    // 3️⃣ Recalcule le total des items
-    const itemsTotal = order.items.reduce(
-      (sum, item) => sum + item.price * item.quantity,
-      0,
+    const newQty = (item.preparedQuantity || 0) + 1;
+    const done = newQty >= item.quantity;
+    await this.orderItemModel.findByIdAndUpdate(itemId, {
+      preparedQuantity: newQty,
+      isPrepared: done,
+    });
+    const order = await this.orderModel.findById(orderId).orFail(
+      () => new NotFoundException('Order not found'),
     );
 
-    // 4️⃣ Récupère les frais de livraison
-    const deliveryFee =
-    order.orderType === 'delivery'
-      ? this.restaurantService.getRestaurant()!.deliveryFee
-      : 0;
+    const orderObjectId = typeof orderId === 'string' ? new Types.ObjectId(orderId) : orderId;
 
-    // 5️⃣ Si livraison, on ajoute les frais ; sinon, on garde juste les items
-    order.totalAmount =
-      order.orderType === OrderType.DELIVERY
-        ? itemsTotal + deliveryFee
-        : itemsTotal;
+    const allPrepared = await this.orderItemModel
+      .countDocuments({ orderId: orderObjectId, isPrepared: false }) === 0;
 
-    // 6️⃣ Sauvegarde et notification
-    const updatedOrder = await order.save();
+    if (allPrepared) {
+      order.orderStatus = OrderStatus.PREPARED;
+      await order.save();
+    }
     this.gateway.sendUpdate();
-    return updatedOrder;
+    return order;
   }
 
-  // supprimer toutes les commandes d'un utilisateur
-  async deleteOrdersByUser(userId: string): Promise<any> {
-    return this.orderModel.deleteMany({ userId }).exec();
+  async updateOrderStatus(orderId: string, status: OrderStatus): Promise<Order> {
+    return this.orderModel
+      .findByIdAndUpdate(orderId, { orderStatus: status }, { new: true })
+      .orFail(() => new NotFoundException('Order not found'))
+      .then(o => {
+        this.gateway.sendUpdate();
+        return o;
+      });
   }
 
-  // supprimer une commande d'un utilisateur
-  async deleteOrderByUser(userId: string, orderId: string): Promise<any> {
-    return this.orderModel.findOneAndDelete({ userId, _id: orderId }).exec();
-  }
-
-  // supprimer une commande
-  async deleteOrder(orderId: string): Promise<any> {
-    return this.orderModel.findByIdAndDelete(orderId).exec();
-  }
-
-  // supprimer toutes les commandes
   async deleteAllOrders(): Promise<any> {
     return this.orderModel.deleteMany().exec();
   }
 
-  // Créer une commande après paiement réussi
-  async createOrder(createOrderDto: CreateOrderDto): Promise<Order> {
-    const { userId, customer, orderType, paymentMethod, paymentStatus, deliveryAddress } =
-      createOrderDto;
-    const cart = await this.cartModel.findOne({ userId });
+  async deleteOrder(orderId: string): Promise<any> {
+    return this.orderModel.findByIdAndDelete(orderId).exec();
+  }
 
-    if (!cart || cart.items.length === 0) {
-      throw new BadRequestException('Cart is empty.');
+  async deleteOrdersByUser(userId: string): Promise<any> {
+    return this.orderModel.deleteMany({ userId }).exec();
+  }
+
+  async deleteOrderByUser(userId: string, orderId: string): Promise<any> {
+    return this.orderModel
+      .findOneAndDelete({ userId, _id: orderId })
+      .exec();
+  }
+
+  async mergeOrders(guestId: string, userId: string): Promise<Order[]> {
+    return this.orderModel
+      .updateMany({ userId: guestId }, { userId })
+      .then(() => this.getOrdersByUser(userId));
+  }
+
+
+  private async _create(args: { dto: any; isEmployee: boolean }): Promise<Order> {
+    const { dto, isEmployee } = args;
+    const itemsSource = isEmployee
+      ? (dto.items as any[]).map(i => this._mapItem(i))
+      : await this._getCartItems(dto.userId);
+
+    const fee = dto.orderType === OrderType.DELIVERY
+      ? this.restaurantService.getRestaurant()!.deliveryFee
+      : 0;
+
+    const order = await new this.orderModel({
+      source: isEmployee ? 'employee' : 'customer',
+      userId: dto.userId ?? undefined,
+      customer: dto.customer,
+      items: [],
+      totalAmount: 0,
+      orderStatus: OrderStatus.IN_PREPARATION,
+      paymentMethod: dto.paymentMethod,
+      paymentStatus: dto.paymentStatus,
+      orderType: dto.orderType,
+      deliveryAddress: dto.orderType === OrderType.DELIVERY ? dto.deliveryAddress : null,
+    }).save();
+
+    const createdItems = await this.orderItemModel.insertMany(
+      itemsSource.map(i => ({ ...i, orderId: this.toObjectId(order._id as string | Types.ObjectId), preparedQuantity: 0, isPrepared: false }))
+    );
+    const itemsIds = createdItems.map(i => this.toObjectId(i._id));
+    const totalAmount = createdItems.reduce((s, i) => s + i.price * i.quantity, 0) + fee;
+    // Mise à jour fiable de la commande en base
+    const updatedOrder = await this.orderModel.findByIdAndUpdate(
+      order._id,
+      { items: itemsIds, totalAmount },
+      { new: true }
+    );
+
+    if (!updatedOrder) {
+      throw new NotFoundException('Order not found after update');
     }
 
-    const deliveryFee =
-      orderType == OrderType.DELIVERY
-        ? this.restaurantService.getRestaurant()!.deliveryFee
-        : 0;
+    if (!isEmployee) {
+      await this.cartModel.updateOne({ userId: dto.userId }, { items: [] });
+    }
 
-    // Nettoyer les items du panier
-    const orderItems: OrderItem[] = cart.items.map((item) => ({
-      productId: new Types.ObjectId(item.productId),
+    this.gateway.sendUpdate();
+    return updatedOrder;
+  }
+
+  private async _getCartItems(userId: string) {
+    const cart = await this.cartModel.findOne({ userId }).orFail(
+      () => new BadRequestException('Cart is empty'),
+    );
+    if (!cart.items.length) throw new BadRequestException('Cart is empty');
+    return cart.items;
+  }
+
+  private _mapItem(item: any) {
+    return {
+      productId: this.toObjectId(item.productId),
       name: item.name,
       quantity: item.quantity,
       price: item.price,
       size: item.size,
       image_url: item.image_url,
-    }));
+    };
+  }
 
-    const newOrder = new this.orderModel({
-      userId: (userId && Types.ObjectId.isValid(userId)) ? new Types.ObjectId(userId) : userId,
-      customer,
-      items: orderItems,
-      totalAmount:
-        orderItems.reduce(
-          (total, item) => total + item.price * item.quantity,
-          0,
-        ) + deliveryFee,
-      orderStatus: OrderStatus.IN_PREPARATION, // En cours de préparation
-      paymentStatus,
-      orderType, // Livraison ou à emporter
-      paymentMethod, // Carte, PayPal ou espèces
-      deliveryAddress,
+  private toObjectId(id: string | Types.ObjectId) {
+    return Types.ObjectId.isValid(String(id))
+      ? new Types.ObjectId(String(id))
+      : (id as Types.ObjectId);
+  }
+
+/** Récupère et transforme une commande avec détails client & produits */
+  private async _fetchSingleOrderWithCustomer(id: string): Promise<any> {
+    const order = await this.orderModel
+      .findById(id)
+      .populate({
+        path: 'items',
+        model: 'OrderItem',
+        populate: {
+          path: 'productId',
+          model: 'Product',
+          select: 'name image_url productType basePrice sizes category',
+          populate: {
+            path: 'category',
+            model: 'Category',
+            select: 'name',
+          },
+        },
+      })
+      .populate({
+        path: 'userId',
+        model: 'User',
+        select: 'firstName phone',
+      })
+      .lean();
+
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+
+    const customerData = {
+      name:  (order.userId as any)?.firstName  ?? order.customer?.name,
+      phone: (order.userId as any)?.phone      ?? order.customer?.phone,
+    };
+
+    const items = (order.items as any[]).map(oi => {
+      const prod = oi.productId as any;
+      let computedPrice = oi.price;
+
+      if (prod.productType === 'multiple_sizes' && prod.sizes) {
+        const sizeMatch = prod.sizes.find((s: any) => s.name === oi.size);
+        if (sizeMatch) computedPrice = sizeMatch.price;
+      } else if (prod.productType === 'single_price' && prod.basePrice != null) {
+        computedPrice = prod.basePrice;
+      }
+
+      return {
+        _id:              oi._id, // Ajout de l'identifiant de l'item
+        productId:        prod._id,
+        name:             prod.name,
+        price:            computedPrice,
+        quantity:         oi.quantity,
+        size:             oi.size,
+        image_url:        prod.image_url,
+        category:         prod.category,
+        preparedQuantity: oi.preparedQuantity  ?? 0,
+        isPrepared:       oi.isPrepared       ?? false,
+      };
     });
 
-    await newOrder.save();
-    this.gateway.sendUpdate();
-    return newOrder;
-  }
-
-  // Créer une commande par un employé
-  async createOrderByEmployee(dto: CreateOrderByEmployeeDto): Promise<Order> {
-    const { customer, items, orderType, paymentMethod, paymentStatus, deliveryAddress } = dto;
-
-    if (!items || items.length === 0) {
-      throw new BadRequestException('Items list is empty.');
-    }
-
-    const deliveryFee =
-      orderType === 'delivery'
-        ? this.restaurantService.getRestaurant()!.deliveryFee
-        : 0;
-
-    const totalAmount =
-      items.reduce((acc, item) => acc + item.price * item.quantity, 0) +
-      deliveryFee;
-
-    const newOrder = new this.orderModel({
-      source: 'employee',
-      customer,
+    return {
+      _id:                order._id,
+      source:             order.source,
       items,
-      totalAmount,
-      orderStatus: OrderStatus.IN_PREPARATION,
-      paymentMethod,
-      paymentStatus,
-      orderType,
-      deliveryAddress: orderType === OrderType.DELIVERY ? deliveryAddress : null,
-  });
-    await newOrder.save();
-    this.gateway.sendUpdate();
-    return newOrder;
+      totalAmount:        order.totalAmount,
+      orderStatus:        order.orderStatus,
+      paymentMethod:      order.paymentMethod,
+      paymentStatus:      order.paymentStatus,
+      orderType:          order.orderType,
+      deliveryAddress:    order.deliveryAddress,
+      positionHistory:    order.positionHistory,
+      lastPositionUpdate: order.lastPositionUpdate,
+      customer:           customerData,
+    };
   }
 
-  // 📌 Récupérer les commandes dans une plage de dates
-  async getOrdersByDateRange(start: Date, end: Date): Promise<Order[]> {
-    return this.orderModel
-      .find({
-        createdAt: { $gte: start, $lte: end },
-      })
-      .sort({ createdAt: -1 })
-      .exec();
-  }
-
-  // Fusionner les commandes d'un invité avec celles d'un utilisateur authent
-  async mergeOrders(guestId: string, userId: string): Promise<Order[]> {
-    // Trouver les commandes associées au guestId
-    const guestOrders = await this.orderModel.find({ userId: guestId });
-
-    if (guestOrders.length) {
-      // Mettre à jour chaque commande pour qu'elle soit associée à l'utilisateur authentifié
-      await this.orderModel.updateMany(
-        { userId: guestId },
-        { $set: { userId } },
-      );
-    }
-
-    // Retourner les commandes associées à l'utilisateur authentifié
-    return this.orderModel.find({ userId });
-  }
-
-  async findLiveOrders(): Promise<Order[]> {
-    return this.orderModel
-      .find({
-        orderStatus: OrderStatus.IN_PREPARATION,
-      })
-      .sort({ createdAt: 1 })
-      .exec(); // triées de la plus ancienne à la plus récente
-  }
-
-  async getOrdersWithCustomerDetails(start: Date, end: Date): Promise<any[]> {
+  /** Récupère et transforme toutes les commandes d’une plage donnée */
+  private async _fetchOrdersWithCustomer(start: Date, end: Date): Promise<any[]> {
     const allOrders = await this.orderModel
-      .find({
-        createdAt: { $gte: start, $lte: end },
-      })
-      .sort({ createdAt: -1 })
+      .find({ createdAt: { $gte: start, $lte: end } })
+      .sort('-createdAt')
       .select([
         '_id',
         'source',
@@ -345,48 +372,37 @@ export class OrderService {
         'userId',
       ].join(' '))
       .lean();
-  
-    // Séparation des commandes avec userId valide (ObjectId)
-    const validObjectId = mongoose.Types.ObjectId.isValid;
-  
-    const ordersWithObjectId = allOrders.filter(o => validObjectId(o.userId!));
-    const ordersWithStringId = allOrders.filter(o => !validObjectId(o.userId!));
-  
-    // Peupler uniquement celles qui ont un ObjectId
-    const populated = await this.orderModel
-      .find({ _id: { $in: ordersWithObjectId.map(o => o._id) } })
+
+    // Séparer selon que userId soit un ObjectId valide
+    const isValidId = Types.ObjectId.isValid;
+    const withOid   = allOrders.filter(o => o.userId && isValidId(o.userId.toString()));
+    const populated  = await this.orderModel
+      .find({ _id: { $in: withOid.map(o => o._id) } })
       .populate('userId', 'firstName phone')
-      .select([
-        '_id',
-        'userId',
-      ].join(' '))
+      .select('_id userId')
       .lean();
-  
-    // Associer les champs peuplés
-    const userMap = new Map(populated.map(o => [o._id.toString(), o.userId]));
-  
-    const finalOrders = allOrders.map(order => {
-      const populatedUser = userMap.get(order._id.toString()) as any;
-  
+
+    const userMap = new Map<string, any>(
+      populated.map(o => [o._id.toString(), o.userId]),
+    );
+
+    return allOrders.map(order => {
+      const u = userMap.get(order._id.toString()) as any;
       return {
-        _id: order._id,
-        source: order.source,
-        totalAmount: order.totalAmount,
-        orderStatus: order.orderStatus,
-        paymentMethod: order.paymentMethod,
-        paymentStatus: order.paymentStatus,
-        orderType: order.orderType,
-        createdAt: order.createdAt,
+        _id:             order._id,
+        source:          order.source,
+        totalAmount:     order.totalAmount,
+        orderStatus:     order.orderStatus,
+        paymentMethod:   order.paymentMethod,
+        paymentStatus:   order.paymentStatus,
+        orderType:       order.orderType,
+        createdAt:       order.createdAt,
         deliveryAddress: order.deliveryAddress,
         customer: {
-          name:  populatedUser?.firstName ?? order.customer?.name,
-          phone: populatedUser?.phone     ?? order.customer?.phone,
+          name:  u?.firstName ?? order.customer?.name,
+          phone: u?.phone     ?? order.customer?.phone,
         },
       };
     });
-  
-    return finalOrders;
-  }  
-  
-    
+  }
 }

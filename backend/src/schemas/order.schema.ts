@@ -1,6 +1,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 import { Address, AddressSchema } from './address.schema';
+import { OrderItem } from './order-item.schema';
 
 export type OrderDocument = Order & Document;
 
@@ -42,27 +43,6 @@ export class Customer {
   phone: string;
 }
 
-@Schema()
-export class OrderItem {
-  @Prop({ type: Types.ObjectId, ref: 'Product', required: true })
-  productId: Types.ObjectId;
-
-  @Prop({ required: true })
-  name: string;
-
-  @Prop({ required: true })
-  price: number;
-
-  @Prop({ required: true })
-  quantity: number;
-
-  @Prop()
-  size?: string;
-
-  @Prop()
-  image_url?: string;
-}
-
 @Schema({ timestamps: true })
 export class Order extends Document {
   @Prop({ type: Types.ObjectId, ref: 'User', required: false })
@@ -74,8 +54,12 @@ export class Order extends Document {
   @Prop({ type: Customer, required: false })
   customer?: Customer;
 
-  @Prop({ type: [OrderItem] })
-  items: OrderItem[];
+  // @Prop({ type: [OrderItem] })
+  // items: OrderItem[];
+
+  @Prop({ type: [Types.ObjectId], ref: 'OrderItem' })
+  items: Types.ObjectId[];
+
 
   @Prop({ required: true })
   totalAmount: number;

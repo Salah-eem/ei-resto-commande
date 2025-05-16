@@ -8,7 +8,6 @@ import {
     IsArray,
   } from 'class-validator';
   import { Type } from 'class-transformer';
-  import { OrderItem } from 'src/schemas/order.schema';
   import { OrderType, PaymentMethod, PaymentStatus } from 'src/schemas/order.schema';
   import { AddressDto } from 'src/address/dto/address.dto';
 import { OrderItemDto } from './order-item.dto';

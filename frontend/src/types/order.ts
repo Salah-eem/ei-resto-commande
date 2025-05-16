@@ -1,5 +1,6 @@
 import { Address } from "./address";
 import { CartItem } from "./cartItem";
+import { OrderItem } from "./orderItem";
 
 export enum OrderStatus {
   CONFIRMED = 'confirmed',
@@ -45,7 +46,7 @@ export interface Order {
   userId: string;
   source: string;
   customer: Customer; // Added customer details
-  items: CartItem[];
+  items: OrderItem[];
   totalAmount: number;
   orderStatus: OrderStatus;
   paymentMethod: PaymentMethod;

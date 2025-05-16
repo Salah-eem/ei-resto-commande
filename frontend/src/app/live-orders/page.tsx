@@ -15,33 +15,31 @@ export default function LiveOrdersPage() {
 
   useLiveOrdersSocket();
   return (
-    <Box p={{ xs: 2, md: 4 }}>
-      <Box display="flex" alignItems="center" gap={1} mb={2}>
-        <AccessTimeIcon color="primary" />
-        <Typography variant="h4" fontWeight="bold">
-          Commandes en cours
-        </Typography>
+    <Box minHeight="100vh" sx={{ background: 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)', py: { xs: 2, md: 6 } }}>
+      <Box maxWidth="md" mx="auto">
+        {error && (
+          <Typography color="error" variant="h6" textAlign="center" mb={2}>
+            {error}
+          </Typography>
+        )}
+
+        {orders.length === 0 && !loading && !error && (
+          <Typography variant="body1" color="textSecondary" textAlign="center">
+            No live orders.
+          </Typography>
+        )}
+
+        {orders.length > 0 && (
+          <Box position="relative" boxShadow={4} borderRadius={3} bgcolor="#fff" p={{ xs: 1, md: 3 }}>
+            <LiveOrderList orders={orders} />
+            {loading && (
+              <Box position="absolute" top={0} left={0} width="100%" height="100%" display="flex" justifyContent="center" alignItems="center" bgcolor="rgba(255,255,255,0.5)" zIndex={2}>
+                <CircularProgress />
+              </Box>
+            )}
+          </Box>
+        )}
       </Box>
-
-      {loading && (
-        <Box display="flex" justifyContent="center" alignItems="center" minHeight="40vh">
-          <CircularProgress />
-        </Box>
-      )}
-
-      {error && (
-        <Typography color="error" variant="h6">
-          {error}
-        </Typography>
-      )}
-
-      {!loading && !error && orders.length === 0 && (
-        <Typography variant="body1" color="textSecondary">
-          Aucune commande en cours.
-        </Typography>
-      )}
-
-      {!loading && !error && orders.length > 0 && <LiveOrderList orders={orders} />}
     </Box>
   )
 }

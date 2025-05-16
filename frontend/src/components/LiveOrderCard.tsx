@@ -1,6 +1,6 @@
 'use client'
 
-import { Order } from '@/types/order'
+import { OrderItem } from '@/types/orderItem'
 import OrderTimer from './OrderTimer'
 import {
   Card,
@@ -14,9 +14,13 @@ import {
 } from '@mui/material'
 
 type Props = {
-  order: Order
+  order: { 
+    _id: string
+    createdAt: string
+    items: OrderItem[]
+  }
   orderIndex: number
-  selectedItemIndex: number
+  selectedItemIndex: number 
   onItemClick: (orderIndex: number, itemIndex: number) => void
 }
 
@@ -26,7 +30,13 @@ export default function LiveOrderCard({
   selectedItemIndex,
   onItemClick,
 }: Props) {
-  if (order.items.length === 0) return null
+  // 1️⃣ on prépare un tableau [ { item, originalIdx } ]
+  const unprepared = order.items
+    .map((item, idx) => ({ item, originalIdx: idx, quantity: item.quantity, preparedQuantity: item.preparedQuantity }))
+    .filter(({ item }) => !item.isPrepared)
+
+  // 2️⃣ si plus rien à faire, on ne rend rien
+  if (unprepared.length === 0) return null
 
   return (
     <Card
@@ -35,15 +45,13 @@ export default function LiveOrderCard({
         borderRadius: 2,
         boxShadow: 3,
         transition: 'transform 0.2s',
-        '&:hover': {
-          transform: 'scale(1.01)',
-        },
+        '&:hover': { transform: 'scale(1.01)' },
       }}
     >
       <CardContent>
         <Box display="flex" justifyContent="space-between" alignItems="center">
           <Typography variant="h6" fontWeight="bold">
-            Commande #{order._id.slice(-4)}
+            order #{order._id.slice(-4)}
           </Typography>
           <OrderTimer startTime={new Date(order.createdAt)} />
         </Box>
@@ -51,11 +59,12 @@ export default function LiveOrderCard({
         <Divider sx={{ my: 2 }} />
 
         <List dense>
-          {order.items.map((item, index) => {
-            const isSelected = index === selectedItemIndex
+          {unprepared.map(({ item, originalIdx }, unpreparedIdx) => {
+            // on checke la sélection par rapport à l'index dans la liste des non préparés
+            const isSelected = unpreparedIdx === selectedItemIndex
             return (
               <ListItem
-                key={index}
+                key={item._id}
                 disableGutters
                 sx={{
                   px: 2,
@@ -65,14 +74,14 @@ export default function LiveOrderCard({
                   border: isSelected ? '2px solid #008f68' : 'none',
                   cursor: 'pointer',
                 }}
-                onClick={() => onItemClick(orderIndex, index)}
+                onClick={() => onItemClick(orderIndex, unpreparedIdx)}
               >
                 <ListItemText
                   primaryTypographyProps={{
                     fontSize: 15,
                     fontWeight: isSelected ? 'bold' : 'normal',
                   }}
-                  primary={`🍽️ ${item.quantity}× ${item.name}`}
+                  primary={`🍽️ ${item.quantity - (item.preparedQuantity || 0)}× ${item.name}`}
                 />
               </ListItem>
             )
