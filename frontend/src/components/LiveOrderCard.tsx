@@ -12,13 +12,11 @@ import {
   Divider,
   Box,
 } from '@mui/material'
+import { Order, OrderType } from '@/types/order'
+import { capitalizeFirstLetter } from '@/utils/functions.utils'
 
 type Props = {
-  order: { 
-    _id: string
-    createdAt: string
-    items: OrderItem[]
-  }
+  order: Order
   orderIndex: number
   selectedItemIndex: number 
   onItemClick: (orderIndex: number, itemIndex: number) => void
@@ -50,10 +48,39 @@ export default function LiveOrderCard({
     >
       <CardContent>
         <Box display="flex" justifyContent="space-between" alignItems="center">
-          <Typography variant="h6" fontWeight="bold">
-            order #{order._id.slice(-4)}
-          </Typography>
-          <OrderTimer startTime={new Date(order.createdAt)} />
+          <Box>
+            <Typography variant="h6" fontWeight="bold">
+              #{order._id.slice(-4) +" "}
+              {order.orderType && (
+              <span style={{ color: order.orderType === OrderType.DELIVERY ? '#1976d2' : '#43a047', fontWeight: 'bold' }}>
+                {capitalizeFirstLetter(order.orderType)}
+              </span>
+              )}
+            </Typography>
+            
+            {/* Adresse de livraison si applicable */}
+            {order.orderType === OrderType.DELIVERY && order.deliveryAddress && (
+              <Typography variant="body2" color="text.primary">
+                <span style={{ fontWeight: 'bold' }}>
+                  {capitalizeFirstLetter(order.deliveryAddress.street)} {order.deliveryAddress.streetNumber}
+                </span>
+              </Typography>
+            )}
+
+            {/* Source of the order*/}
+            {order.source && (
+              <Typography variant="body2" color="text.secondary">
+                {capitalizeFirstLetter(order.source)}
+              </Typography>
+            )}
+          </Box>
+          <OrderTimer 
+            startTime={
+              order.scheduledFor && new Date(order.scheduledFor) > new Date(order.createdAt)
+                ? new Date(order.scheduledFor)
+                : new Date(order.createdAt)
+            }
+          />
         </Box>
 
         <Divider sx={{ my: 2 }} />
@@ -81,7 +108,7 @@ export default function LiveOrderCard({
                     fontSize: 15,
                     fontWeight: isSelected ? 'bold' : 'normal',
                   }}
-                  primary={`🍽️ ${item.quantity - (item.preparedQuantity || 0)}× ${item.name}`}
+                  primary={`${item.quantity - (item.preparedQuantity || 0)}× ${item.size ? `(${item.size}) ` : ''}${capitalizeFirstLetter(item.name)}`}
                 />
               </ListItem>
             )

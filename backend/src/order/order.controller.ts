@@ -9,12 +9,15 @@ import { startOfDay, endOfDay } from 'date-fns';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { CreateOrderByEmployeeDto } from './dto/create-order-by-employee.dto';
 import { Public } from 'src/common/decorators/public.decorator';
+import { UserService } from 'src/user/user.service';
 
 
 @UseGuards(JwtGuard)
 @Controller('order')
 export class OrderController {
-    constructor(private readonly orderService: OrderService) {}
+    constructor(private readonly orderService: OrderService,
+                private readonly userService: UserService,
+    ) {}
 
     
     @Get('in-delivery')
@@ -35,6 +38,17 @@ export class OrderController {
       const end = endOfDay(new Date());
       return this.orderService.getOrdersWithCustomerDetails(start, end);
     }
+
+    // 📌 Récupérer les commandes programmées (scheduled)
+    @Roles(Role.Admin, Role.Employee)
+    @Get('scheduled')
+    async getScheduledOrders() {
+      // On considère programmées : toutes les commandes dont la date de livraison prévue (scheduledFor) est aujourd'hui
+      const start = startOfDay(new Date());
+      const end = endOfDay(new Date());
+      // Si tu as un champ spécifique (ex: scheduledFor), adapte la requête ci-dessous
+      return this.orderService.getScheduledOrders(start, end);
+    }
   
     // 📌 Récupérer les commandes d'un utilisateur
     @Get('user/:userId')
@@ -43,11 +57,6 @@ export class OrderController {
     }
 
     // 📌 Récupérer une commande
-    // @Get(':orderId')
-    // async getOrder(@Param('orderId') orderId: string): Promise<Order> {
-    //   return this.orderService.getOrder(orderId);
-    // }
-
     @Get(':id')
     async getOrderById(@Param('id') id: string) {
       return this.orderService.getOrderWithCustomer(id);
@@ -72,9 +81,16 @@ export class OrderController {
     // 📌 Créer une commande par un employé
     @Roles(Role.Admin, Role.Employee)
     @Post('create-by-employee')
-    async createByEmployee(@Body() dto: CreateOrderByEmployeeDto): Promise<Order> {
-      console.log('createByEmployee', dto);
-      return this.orderService.createOrderByEmployee(dto);
+    async createByEmployee(@Body() dto: CreateOrderByEmployeeDto, @GetUser() user: any): Promise<Order> {
+      // Récupère le vrai user à partir de son email
+      let userName = user?.email || 'employee';
+      if (user?.email) {
+        const dbUser = await this.userService.findByEmail(user.email);
+        if (dbUser && dbUser.firstName) {
+          userName = dbUser.firstName;
+        }
+      }
+      return this.orderService.createOrderByEmployee(dto, userName);
     }
 
     // Mettre à jour une commande

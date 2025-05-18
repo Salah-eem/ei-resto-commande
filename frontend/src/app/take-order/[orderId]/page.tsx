@@ -49,6 +49,7 @@ import { Category } from "@/types/category";
 import NominatimAutocomplete from "@/components/NominatimAutocomplete";
 import { get } from "lodash";
 import GeoapifyAutocomplete from "@/components/GeoapifyAutocomplete";
+import { OrderItem } from "@/types/orderItem";
 
 // 🎯 Type uniquement pour les valeurs du formulaire
 type OrderFormValues = {
@@ -56,9 +57,10 @@ type OrderFormValues = {
   phoneNumber: string;
   orderType: OrderType;
   deliveryAddress: Partial<Address>;
-  orderItems: CartItem[];
+  orderItems: OrderItem[];
   paymentMethod: PaymentMethod;
   paymentStatus: PaymentStatus;
+  scheduledFor?: string | null;
 };
 
 // ✅ Validation Yup
@@ -96,6 +98,18 @@ const validationSchema = Yup.object().shape({
   paymentMethod: Yup.mixed<PaymentMethod>()
     .oneOf(Object.values(PaymentMethod))
     .required(),
+  scheduledFor: Yup.string()
+    .nullable()
+    .test(
+      'scheduledFor-required-if-filled',
+      'Scheduled date/time is required if set',
+      function (value) {
+        // Autorise null ou string non vide (pour DELIVERY ou PICKUP)
+        if (value === null || value === undefined || value === '') return true;
+        // Vérifie que c'est une date valide (format datetime-local)
+        return !isNaN(Date.parse(value));
+      }
+    ),
 });
 
 // 🧾 Valeurs initiales
@@ -113,6 +127,7 @@ const initialFormValues: OrderFormValues = {
   orderItems: [],
   paymentMethod: PaymentMethod.CASH,
   paymentStatus: PaymentStatus.PENDING,
+  scheduledFor: null,
 };
 
 const TakeOrderPage: React.FC = () => {
@@ -170,6 +185,9 @@ const TakeOrderPage: React.FC = () => {
         orderItems: order.items || [],
         paymentMethod: order.paymentMethod,
         paymentStatus: order.paymentStatus,
+        scheduledFor: order.scheduledFor
+          ? new Date(order.scheduledFor).toLocaleString('sv-SE', { hour12: false }).replace(' ', 'T').slice(0, 16)
+          : null,
       };
     }
     return initialFormValues;
@@ -210,7 +228,7 @@ const TakeOrderPage: React.FC = () => {
   );
   const totalPages = Math.ceil(filteredProducts.length / productsPerPage);
 
-  const calculateTotal = (items: CartItem[], orderType: OrderType) =>
+  const calculateTotal = (items: OrderItem[], orderType: OrderType) =>
     items
       .reduce(
         (sum, item) => sum + item.price * item.quantity,
@@ -231,7 +249,6 @@ const TakeOrderPage: React.FC = () => {
           (sum, item) => sum + item.price * item.quantity,
           0
         ),
-
         orderType: values.orderType,
         deliveryAddress:
           values.orderType === OrderType.DELIVERY
@@ -247,6 +264,10 @@ const TakeOrderPage: React.FC = () => {
             : undefined,
         paymentMethod: values.paymentMethod,
         paymentStatus: values.paymentStatus,
+        scheduledFor:
+          values.scheduledFor && isCreateMode
+            ? values.scheduledFor // string locale du champ input (YYYY-MM-DDTHH:mm)
+            : undefined,
       };
 
       if (isCreateMode) {
@@ -367,6 +388,18 @@ const TakeOrderPage: React.FC = () => {
                       helperText={touched.phoneNumber && errors.phoneNumber}
                       sx={{ mb: 2 }}
                     />
+                      <TextField
+                        label="Scheduled for"
+                        name="scheduledFor"
+                        type="datetime-local"
+                        value={values.scheduledFor || ""}
+                        onChange={handleChange}
+                        fullWidth
+                        error={!!(errors.scheduledFor && touched.scheduledFor)}
+                        helperText={touched.scheduledFor && errors.scheduledFor}
+                        sx={{ mt: 2, mb: 2 }}
+                        InputLabelProps={{ shrink: true }}
+                      />
                     <FormLabel>Order Type</FormLabel>
                     <RadioGroup
                       row
@@ -591,7 +624,7 @@ const TakeOrderPage: React.FC = () => {
                                     sx={{ mt: 2 }}
                                     variant="contained"
                                     onClick={() => {
-                                      const newItem: CartItem = {
+                                      const newItem: OrderItem = {
                                         productId: product._id,
                                         name:
                                           product.productType ===

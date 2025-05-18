@@ -57,4 +57,5 @@ export interface Order {
   deliveryAddress: Address | null;
   positionHistory: PositionHistory[];
   lastPositionUpdate: string | null;
+  scheduledFor: string | null; // Date ISO string
 }

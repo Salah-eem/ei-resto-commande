@@ -1,6 +1,7 @@
+import { Category } from "./category";
 
 export interface OrderItem {
-  _id: string;
+  _id?: string;
   productId: string;
   name: string;
   price: number;
@@ -9,4 +10,5 @@ export interface OrderItem {
   isPrepared?: boolean;         // ← true quand preparedQuantity === quantity
   size?: string;
   image_url?: string;
+  category: Category;
 }

@@ -48,8 +48,8 @@ export class Order extends Document {
   @Prop({ type: Types.ObjectId, ref: 'User', required: false })
   userId?: Types.ObjectId;
 
-  @Prop({ type: String, enum: ['online', 'employee'], default: 'online' })
-  source: 'online' | 'employee';
+  @Prop({ type: String, default: 'online' })
+  source: string;
 
   @Prop({ type: Customer, required: false })
   customer?: Customer;
@@ -99,6 +99,9 @@ export class Order extends Document {
 
   @Prop({ type: Date, default: Date.now })
   createdAt: Date;
+
+  @Prop({ type: Date, required: false, default: null })
+  scheduledFor?: Date | null;
 }
 
 export const OrderSchema = SchemaFactory.createForClass(Order);

@@ -26,7 +26,7 @@ type OrderKey = keyof Pick<Order, 'orderStatus' | 'totalAmount' | 'orderType' | 
 
 const ViewOrdersPage = () => {
   const dispatch = useAppDispatch();
-  const { orders, loading } = useAppSelector((state: RootState) => state.orders);
+  const { todayOrders, loading } = useAppSelector((state: RootState) => state.orders);
 
   const [orderBy, setOrderBy] = useState<OrderKey>('createdAt');
   const [orderDirection, setOrderDirection] = useState<'asc' | 'desc'>('desc');
@@ -61,7 +61,7 @@ const ViewOrdersPage = () => {
   const getShortId = (id: string) => id?.slice(-5)?.toUpperCase();
 
   // 🔍 Recherche filtrée sur ID, nom, téléphone, adresse
-  const filteredOrders = orders.filter((order) => {
+  const filteredOrders = todayOrders.filter((order) => {
     const query = searchQuery.toLowerCase();
     const id = order._id?.toLowerCase() || '';
     const name = order.customer?.name?.toLowerCase() || '';

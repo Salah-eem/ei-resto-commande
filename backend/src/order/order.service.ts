@@ -17,6 +17,8 @@ import { LiveOrdersGateway } from 'src/gateway/live-orders.gateway';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { CreateOrderByEmployeeDto } from './dto/create-order-by-employee.dto';
 import { OrderItem, OrderItemDocument } from 'src/schemas/order-item.schema';
+import { scheduled } from 'rxjs';
+import { GetUser } from 'src/common/decorators/get-user.decorator';
 
 @Injectable()
 export class OrderService {
@@ -38,8 +40,16 @@ export class OrderService {
   }
 
   async findLiveOrders(): Promise<any[]> {
+    const now = new Date();
+    // On ne prend que les commandes en préparation ET qui ne sont pas programmées, OU qui sont programmées mais dont scheduledFor <= maintenant
     const orders = await this.orderModel
-      .find({ orderStatus: OrderStatus.IN_PREPARATION })
+      .find({
+        orderStatus: OrderStatus.IN_PREPARATION,
+        $or: [
+          { scheduledFor: null },
+          { scheduledFor: { $lte: now } },
+        ],
+      })
       .sort('createdAt')
       .populate({
         path: 'items',
@@ -119,8 +129,8 @@ export class OrderService {
     return this._create({ dto, isEmployee: false });
   }
 
-  async createOrderByEmployee(dto: CreateOrderByEmployeeDto): Promise<Order> {
-    return this._create({ dto, isEmployee: true });
+  async createOrderByEmployee(dto: CreateOrderByEmployeeDto, userName: string): Promise<Order> {
+    return this._create({ dto, isEmployee: true, userName });
   }
 
   async updateOrder(id: string, dto: Partial<Omit<Order, 'totalAmount'>>): Promise<Order> {
@@ -206,18 +216,21 @@ export class OrderService {
   }
 
 
-  private async _create(args: { dto: any; isEmployee: boolean }): Promise<Order> {
-    const { dto, isEmployee } = args;
+  private async _create(args: { dto: any; isEmployee: boolean; userName?: string }): Promise<Order> {
+    const { dto, isEmployee, userName } = args;
     const itemsSource = isEmployee
       ? (dto.items as any[]).map(i => this._mapItem(i))
-      : await this._getCartItems(dto.userId);
+      : (await this._getCartItems(dto.userId)).map(i => this._mapItem(i));
+
+    // Si employé, la source est le nom de l'employé, sinon 'online'
+    const source = isEmployee && userName ? userName : 'online';
 
     const fee = dto.orderType === OrderType.DELIVERY
       ? this.restaurantService.getRestaurant()!.deliveryFee
       : 0;
 
     const order = await new this.orderModel({
-      source: isEmployee ? 'employee' : 'customer',
+      source,
       userId: dto.userId ?? undefined,
       customer: dto.customer,
       items: [],
@@ -227,12 +240,13 @@ export class OrderService {
       paymentStatus: dto.paymentStatus,
       orderType: dto.orderType,
       deliveryAddress: dto.orderType === OrderType.DELIVERY ? dto.deliveryAddress : null,
+      scheduledFor: dto.scheduledFor,
     }).save();
 
     const createdItems = await this.orderItemModel.insertMany(
       itemsSource.map(i => ({ ...i, orderId: this.toObjectId(order._id as string | Types.ObjectId), preparedQuantity: 0, isPrepared: false }))
     );
-    const itemsIds = createdItems.map(i => this.toObjectId(i._id));
+    const itemsIds = createdItems.map(i => this.toObjectId(i.id));
     const totalAmount = createdItems.reduce((s, i) => s + i.price * i.quantity, 0) + fee;
     // Mise à jour fiable de la commande en base
     const updatedOrder = await this.orderModel.findByIdAndUpdate(
@@ -277,6 +291,7 @@ export class OrderService {
       ? new Types.ObjectId(String(id))
       : (id as Types.ObjectId);
   }
+
 
 /** Récupère et transforme une commande avec détails client & produits */
   private async _fetchSingleOrderWithCustomer(id: string): Promise<any> {
@@ -350,6 +365,7 @@ export class OrderService {
       positionHistory:    order.positionHistory,
       lastPositionUpdate: order.lastPositionUpdate,
       customer:           customerData,
+      scheduledFor:       order.scheduledFor,
     };
   }
 
@@ -402,6 +418,81 @@ export class OrderService {
           name:  u?.firstName ?? order.customer?.name,
           phone: u?.phone     ?? order.customer?.phone,
         },
+      };
+    });
+  }
+
+  // Récupérer les commandes programmées (scheduled) du jour
+  async getScheduledOrders(start: Date, end: Date): Promise<any[]> {
+
+    // On considère programmées : scheduledFor entre start et end
+    const scheduledOrders = await this.orderModel
+      .find({ scheduledFor: { $gte: start, $lte: end } })
+      .sort('scheduledFor')
+      .populate({
+        path: 'items',
+        model: 'OrderItem',
+        populate: {
+          path: 'productId',
+          model: 'Product',
+          select: 'name image_url productType basePrice sizes category',
+          populate: {
+            path: 'category',
+            model: 'Category',
+            select: 'name',
+          },
+        },
+      })
+      .populate({
+        path: 'userId',
+        model: 'User',
+        select: 'firstName phone',
+      })
+      .lean();
+
+    // Formatage enrichi similaire à getOrdersWithCustomerDetails
+    return scheduledOrders.map(order => {
+      const customerData = {
+        name:  (order.userId as any)?.firstName  ?? order.customer?.name,
+        phone: (order.userId as any)?.phone      ?? order.customer?.phone,
+      };
+      const items = (order.items as any[]).map(oi => {
+        const prod = oi.productId as any;
+        let computedPrice = oi.price;
+        if (prod.productType === 'multiple_sizes' && prod.sizes) {
+          const sizeMatch = prod.sizes.find((s: any) => s.name === oi.size);
+          if (sizeMatch) computedPrice = sizeMatch.price;
+        } else if (prod.productType === 'single_price' && prod.basePrice != null) {
+          computedPrice = prod.basePrice;
+        }
+        return {
+          _id: oi._id,
+          productId: prod._id,
+          name: prod.name,
+          price: computedPrice,
+          quantity: oi.quantity,
+          size: oi.size,
+          image_url: prod.image_url,
+          category: prod.category,
+          preparedQuantity: oi.preparedQuantity ?? 0,
+          isPrepared: oi.isPrepared ?? false,
+        };
+      });
+      return {
+        _id: order._id,
+        source: order.source,
+        items,
+        totalAmount: order.totalAmount,
+        orderStatus: order.orderStatus,
+        paymentMethod: order.paymentMethod,
+        paymentStatus: order.paymentStatus,
+        orderType: order.orderType,
+        scheduledFor: order.scheduledFor,
+        deliveryAddress: order.deliveryAddress,
+        positionHistory: order.positionHistory,
+        lastPositionUpdate: order.lastPositionUpdate,
+        customer: customerData,
+        createdAt: order.createdAt,
       };
     });
   }

@@ -47,5 +47,8 @@ import { OrderItemDto } from './order-item.dto';
     @ValidateNested()
     @Type(() => AddressDto)
     deliveryAddress?: AddressDto;
+
+    @IsOptional()
+    scheduledFor?: string | null; // Date ISO string
   }
   

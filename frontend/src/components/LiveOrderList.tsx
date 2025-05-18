@@ -60,7 +60,7 @@ export default function LiveOrderList({ orders }: Props) {
         if (!item) return;
         dispatch(validateOrderItem({
           orderId: order._id,
-          itemId: item._id
+          itemId: item._id!
         }));
         // La sélection sera recalculée dans le useEffect suivant
       }

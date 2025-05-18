@@ -6,6 +6,8 @@ import api from "@/lib/api";
 interface OrderState {
   order: Order | null;
   orders: Order[];
+  todayOrders: Order[];
+  scheduledOrders: Order[];
   loading: boolean;
   error: string | null;
 }
@@ -13,6 +15,8 @@ interface OrderState {
 const initialState: OrderState = {
   order: null,
   orders: [],
+  todayOrders: [],
+  scheduledOrders: [],
   loading: false,
   error: null,
 };
@@ -88,6 +92,21 @@ export const fetchTodayOrders = createAsyncThunk(
     } catch (error: any) {
       return rejectWithValue(
         error.response?.data?.message || "Erreur lors du chargement des commandes du jour."
+      );
+    }
+  }
+);
+
+// 📌 Récupérer les commandes programmée
+export const fetchScheduledOrders = createAsyncThunk(
+  "orders/fetchScheduledOrders",
+  async (_, { rejectWithValue }) => {
+    try {
+      const response = await api.get("/order/scheduled");
+      return response.data;
+    } catch (error: any) {
+      return rejectWithValue(
+        error.response?.data?.message || "Erreur lors du chargement des commandes programmées."
       );
     }
   }
@@ -196,9 +215,21 @@ const orderSlice = createSlice({
       })
       .addCase(fetchTodayOrders.fulfilled, (state, action) => {
         state.loading = false;
-        state.orders = action.payload;
+        state.todayOrders = action.payload;
       })
       .addCase(fetchTodayOrders.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      })
+      .addCase(fetchScheduledOrders.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(fetchScheduledOrders.fulfilled, (state, action) => {
+        state.loading = false;
+        state.scheduledOrders = action.payload;
+      })
+      .addCase(fetchScheduledOrders.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload as string;
       })

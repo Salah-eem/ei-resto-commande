@@ -29,4 +29,7 @@ export class CreateOrderDto {
   @ValidateNested()
   @Type(() => AddressDto)
   deliveryAddress?: AddressDto;
+
+  @IsOptional()
+  scheduledFor?: string | null; // Date ISO string
 }

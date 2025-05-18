@@ -23,7 +23,8 @@ export class AuthService {
     dto.password = await bcrypt.hash(dto.password, saltOrRounds);
     try {
       const user = await this.userService.create(dto);
-      return this.signToken(user.email, user.role.toString());
+      const userId = (user as any)._id?.toString() || (user as any).id?.toString();
+      return this.signToken(userId, user.email, user.role.toString());
     } catch (error) {
       throw error;
     }
@@ -36,14 +37,15 @@ export class AuthService {
     const pwMatches = await bcrypt.compare(dto.password, user.password);
     if (!pwMatches)
       throw new ForbiddenException('Credentials incorrect');
-    return this.signToken(user.email, user.role.toString());
+    const userId = (user as any)._id?.toString() || (user as any).id?.toString();
+    return this.signToken(userId, user.email, user.role.toString());
   }
 
   /**
    * Génère un access token (valable 15m) et un refresh token (valable 7j)
    */
-  async signToken(email: string, role: string): Promise<{ access_token: string, refresh_token: string }> {
-    const payload = { email, role };
+  async signToken(userId: string, email: string, role: string): Promise<{ access_token: string, refresh_token: string }> {
+    const payload = { sub: userId, email, role };
     const secret = this.config.get('JWT_SECRET');
     
     const access_token = await this.jwt.signAsync(payload, {
@@ -74,7 +76,8 @@ export class AuthService {
         throw new ForbiddenException('Access Denied');
       }
       // Génère et retourne de nouveaux tokens
-      return this.signToken(user.email, user.role.toString());
+      const userId = (user as any)._id?.toString() || (user as any).id?.toString();
+      return this.signToken(userId, user.email, user.role.toString());
     } catch (error) {
       throw new ForbiddenException('Invalid refresh token');
     }
