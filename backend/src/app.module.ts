@@ -14,6 +14,7 @@ import { DeliveryGateway } from './gateway/delivery.gateway';
 import { RestaurantModule } from './restaurant/restaurant.module';
 import { LiveOrdersGateway } from './gateway/live-orders.gateway';
 import { CommonModule } from './common/common.module';
+import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { CommonModule } from './common/common.module';
       isGlobal: true
     }),
     MongooseModule.forRoot(process.env.DB_URI!),
+    ScheduleModule.forRoot(),
 
     AuthModule,
     UserModule,

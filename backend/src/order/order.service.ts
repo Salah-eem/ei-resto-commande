@@ -17,8 +17,8 @@ import { LiveOrdersGateway } from 'src/gateway/live-orders.gateway';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { CreateOrderByEmployeeDto } from './dto/create-order-by-employee.dto';
 import { OrderItem, OrderItemDocument } from 'src/schemas/order-item.schema';
-import { scheduled } from 'rxjs';
-import { GetUser } from 'src/common/decorators/get-user.decorator';
+import { endOfDay, startOfDay } from 'date-fns';
+import { Cron, CronExpression } from '@nestjs/schedule';
 
 @Injectable()
 export class OrderService {
@@ -36,6 +36,7 @@ export class OrderService {
     return this.orderModel.find({
       orderStatus: OrderStatus.READY_FOR_DELIVERY,
       orderType: OrderType.DELIVERY,
+      createdAt: { $gte: startOfDay(new Date()), $lt: endOfDay(new Date()) },
     }).exec();
   }
 
@@ -45,6 +46,7 @@ export class OrderService {
     const orders = await this.orderModel
       .find({
         orderStatus: OrderStatus.IN_PREPARATION,
+        createdAt: { $gte: startOfDay(new Date()), $lt: endOfDay(new Date()) },
         $or: [
           { scheduledFor: null },
           { scheduledFor: { $lte: now } },
@@ -108,6 +110,7 @@ export class OrderService {
         lastPositionUpdate: order.lastPositionUpdate,
         positionHistory: order.positionHistory,
         createdAt: order.createdAt,
+        scheduledFor: order.scheduledFor,
       };
     });
   }
@@ -235,7 +238,7 @@ export class OrderService {
       customer: dto.customer,
       items: [],
       totalAmount: 0,
-      orderStatus: OrderStatus.IN_PREPARATION,
+      orderStatus: dto.scheduledFor ? OrderStatus.SCHEDULED : OrderStatus.IN_PREPARATION,
       paymentMethod: dto.paymentMethod,
       paymentStatus: dto.paymentStatus,
       orderType: dto.orderType,
@@ -374,19 +377,20 @@ export class OrderService {
     const allOrders = await this.orderModel
       .find({ createdAt: { $gte: start, $lte: end } })
       .sort('-createdAt')
-      .select([
-        '_id',
-        'source',
-        'totalAmount',
-        'orderStatus',
-        'paymentMethod',
-        'paymentStatus',
-        'orderType',
-        'createdAt',
-        'deliveryAddress',
-        'customer',
-        'userId',
-      ].join(' '))
+      .populate({
+        path: 'items',
+        model: 'OrderItem',
+        populate: {
+          path: 'productId',
+          model: 'Product',
+          select: 'name image_url productType basePrice sizes category',
+          populate: {
+            path: 'category',
+            model: 'Category',
+            select: 'name',
+          },
+        },
+      })
       .lean();
 
     // Séparer selon que userId soit un ObjectId valide
@@ -404,6 +408,29 @@ export class OrderService {
 
     return allOrders.map(order => {
       const u = userMap.get(order._id.toString()) as any;
+      // Ajout des items enrichis
+      const items = (order.items as any[]).map(oi => {
+        const prod = oi.productId as any;
+        let computedPrice = oi.price;
+        if (prod.productType === 'multiple_sizes' && prod.sizes) {
+          const sizeMatch = prod.sizes.find((s: any) => s.name === oi.size);
+          if (sizeMatch) computedPrice = sizeMatch.price;
+        } else if (prod.productType === 'single_price' && prod.basePrice != null) {
+          computedPrice = prod.basePrice;
+        }
+        return {
+          _id: oi._id,
+          productId: prod._id,
+          name: prod.name,
+          price: computedPrice,
+          quantity: oi.quantity,
+          size: oi.size,
+          image_url: prod.image_url,
+          category: prod.category,
+          preparedQuantity: oi.preparedQuantity ?? 0,
+          isPrepared: oi.isPrepared ?? false,
+        };
+      });
       return {
         _id:             order._id,
         source:          order.source,
@@ -418,6 +445,7 @@ export class OrderService {
           name:  u?.firstName ?? order.customer?.name,
           phone: u?.phone     ?? order.customer?.phone,
         },
+        items,
       };
     });
   }
@@ -427,7 +455,7 @@ export class OrderService {
 
     // On considère programmées : scheduledFor entre start et end
     const scheduledOrders = await this.orderModel
-      .find({ scheduledFor: { $gte: start, $lte: end } })
+      .find({ scheduledFor: { $gte: start, $lte: end }, orderStatus: OrderStatus.SCHEDULED })
       .sort('scheduledFor')
       .populate({
         path: 'items',
@@ -495,5 +523,93 @@ export class OrderService {
         createdAt: order.createdAt,
       };
     });
+  }
+
+  // Récupérer les commandes préparées du jour
+  async getPreparedOrders(): Promise<any[]> {
+    const orders = await this.orderModel
+      .find({
+        orderStatus: OrderStatus.PREPARED,
+        createdAt: { $gte: startOfDay(new Date()), $lt: endOfDay(new Date()) },
+      })
+      .sort('-createdAt')
+      .populate({
+        path: 'items',
+        model: 'OrderItem',
+        populate: {
+          path: 'productId',
+          model: 'Product',
+          select: 'name image_url productType basePrice sizes category',
+          populate: {
+            path: 'category',
+            model: 'Category',
+            select: 'name',
+          },
+        },
+      })
+      .exec();
+
+    return orders.map(order => {
+      const items = (order.items as any[]).map(oi => {
+        const prod = oi.productId as any;
+        let computedPrice = oi.price;
+
+        if (prod.productType === 'multiple_sizes' && prod.sizes) {
+          const sizeMatch = prod.sizes.find((s: any) => s.name === oi.size);
+          if (sizeMatch) computedPrice = sizeMatch.price;
+        } else if (prod.productType === 'single_price' && prod.basePrice != null) {
+          computedPrice = prod.basePrice;
+        }
+
+        return {
+          _id: oi._id,
+          productId: prod._id,
+          name: prod.name,
+          price: computedPrice,
+          quantity: oi.quantity,
+          size: oi.size,
+          image_url: prod.image_url,
+          category: prod.category,
+          preparedQuantity: oi.preparedQuantity ?? 0,
+          isPrepared: oi.isPrepared ?? false,
+        };
+      });
+
+      const totalAmount = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
+      return {
+        _id: order._id,
+        source: order.source,
+        customer: order.customer,
+        items,
+        totalAmount,
+        orderStatus: order.orderStatus,
+        paymentMethod: order.paymentMethod,
+        paymentStatus: order.paymentStatus,
+        orderType: order.orderType,
+        deliveryAddress: order.deliveryAddress,
+        lastPositionUpdate: order.lastPositionUpdate,
+        positionHistory: order.positionHistory,
+        createdAt: order.createdAt,
+      };
+    });
+  }
+
+  // Promote scheduled orders to in preparation if due
+  async promoteScheduledOrdersIfDue() {
+    const now = new Date();
+    // On ne notifie que s'il y a eu des changements
+    const result = await this.orderModel.updateMany(
+      { orderStatus: OrderStatus.SCHEDULED, scheduledFor: { $lte: now } },
+      { $set: { orderStatus: OrderStatus.IN_PREPARATION } }
+    );
+    if (result.modifiedCount > 0) {
+      this.gateway.sendUpdate();
+    }
+  }
+
+  // Cron pour promouvoir les commandes programmées à IN_PREPARATION
+  @Cron(CronExpression.EVERY_10_SECONDS)
+  async promoteScheduledOrdersCron() {
+    await this.promoteScheduledOrdersIfDue();
   }
 }

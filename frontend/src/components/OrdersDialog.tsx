@@ -4,29 +4,33 @@ import {
   Typography, Box, Divider, Paper, Stack
 } from '@mui/material';
 import { useAppDispatch, useAppSelector } from '@/store/slices/hooks';
-import { fetchScheduledOrders } from '@/store/slices/orderSlice';
 import { RootState } from '@/store/store';
 import { capitalizeFirstLetter } from '@/utils/functions.utils';
+import { fetchPreparedOrders, fetchScheduledOrders } from '@/store/slices/orderSlice';
+import { Order, OrderStatus } from '@/types/order';
 
-interface ScheduledOrdersDialogProps {
+interface OrdersDialogProps {
   open: boolean;
   onClose: () => void;
+  type: string;
+  orders: Order[];
+  loading?: boolean;
+  error?: string | null;
+  title?: string;
 }
 
-const ScheduledOrdersDialog: React.FC<ScheduledOrdersDialogProps> = ({ open, onClose }) => {
+const OrdersDialog: React.FC<OrdersDialogProps> = ({ open, onClose, type, orders, loading = false, error = null, title = 'Prepared orders' }) => {
   const dispatch = useAppDispatch();
-  const { scheduledOrders, loading, error } = useAppSelector((state: RootState) => state.orders);
 
   useEffect(() => {
     if (open) {
-      dispatch(fetchScheduledOrders());
+      if (type === 'prepared') {
+        dispatch(fetchPreparedOrders());
+      } else if (type === 'scheduled') {
+        dispatch(fetchScheduledOrders());
+      }
     }
   }, [open, dispatch]);
-
-  const now = new Date();
-  const upcomingOrders = scheduledOrders.filter(
-    o => o.scheduledFor && new Date(o.scheduledFor) >= now
-  );
 
   const formatTime = (dateString: string | null) => {
     if (!dateString) return '';
@@ -38,28 +42,37 @@ const ScheduledOrdersDialog: React.FC<ScheduledOrdersDialogProps> = ({ open, onC
 
   // Keyboard navigation
   useEffect(() => {
-    if (!open || !upcomingOrders.length) return;
+    if (!open || !orders.length) return;
     const handleKeyDown = (e: KeyboardEvent) => {
+      let nextIndex = selectedIndex;
       if (e.key === 'ArrowDown') {
-        setSelectedIndex(prev => (prev < upcomingOrders.length - 1 ? prev + 1 : 0));
+        nextIndex = selectedIndex < orders.length - 1 ? selectedIndex + 1 : 0;
+        setSelectedIndex(nextIndex);
         e.preventDefault();
       } else if (e.key === 'ArrowUp') {
-        setSelectedIndex(prev => (prev > 0 ? prev - 1 : upcomingOrders.length - 1));
+        nextIndex = selectedIndex > 0 ? selectedIndex - 1 : orders.length - 1;
+        setSelectedIndex(nextIndex);
         e.preventDefault();
       } else if (e.key === 'Enter' && selectedIndex >= 0) {
         // Action sur la commande sélectionnée (ex: ouvrir un détail, à implémenter si besoin)
-        // alert(`Commande sélectionnée: ${upcomingOrders[selectedIndex]._id}`);
       }
+      // Scroll automatique sur la sélection
+      setTimeout(() => {
+        const el = document.getElementById(`order-item-${nextIndex}`);
+        if (el) {
+          el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+      }, 0);
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [open, upcomingOrders, selectedIndex]);
+  }, [open, orders, selectedIndex]);
 
   // Reset selection when dialog opens/closes or list changes
   useEffect(() => {
-    if (open) setSelectedIndex(upcomingOrders.length ? 0 : -1);
+    if (open) setSelectedIndex(orders.length ? 0 : -1);
     else setSelectedIndex(-1);
-  }, [open, upcomingOrders]);
+  }, [open, orders]);
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth PaperProps={{
@@ -81,7 +94,7 @@ const ScheduledOrdersDialog: React.FC<ScheduledOrdersDialogProps> = ({ open, onC
         pr: 7
       }}>
         <Box display="flex" alignItems="center" justifyContent="space-between">
-          <span>Scheduled orders for Today, {now.toLocaleDateString()}</span>
+          <span>{title}</span>
           <Button
             onClick={onClose}
             sx={{ minWidth: 0, p: 1, color: '#607d8b', '&:hover': { color: '#d32f2f', background: 'transparent' } }}
@@ -97,15 +110,16 @@ const ScheduledOrdersDialog: React.FC<ScheduledOrdersDialogProps> = ({ open, onC
           </Box>
         ) : error ? (
           <Typography color="error" textAlign="center">{error}</Typography>
-        ) : upcomingOrders.length === 0 ? (
+        ) : orders.length === 0 ? (
           <Typography textAlign="center" color="text.secondary" fontStyle="italic">
-            No scheduled orders for today.
+            No orders.
           </Typography>
         ) : (
           <Stack spacing={2}>
-            {upcomingOrders.map((order, idx) => (
+            {orders.map((order, idx) => (
               <Paper
                 key={order._id}
+                id={`order-item-${idx}`}
                 elevation={3}
                 sx={{
                   background: selectedIndex === idx
@@ -116,19 +130,19 @@ const ScheduledOrdersDialog: React.FC<ScheduledOrdersDialogProps> = ({ open, onC
                   boxShadow: selectedIndex === idx
                     ? '0 4px 24px 0 rgba(44,62,80,0.18)'
                     : '0 2px 12px 0 rgba(44,62,80,0.07)',
-                  border: selectedIndex === idx ? '2px solid #1976d2' : '1px solid #e3eafc',
+                  border: selectedIndex === idx ? '2px solid #26a69a' : '1px solid #e3eafc',
                   transition: 'box-shadow 0.2s, border 0.2s',
                   cursor: 'pointer',
                   '&:hover': {
                     boxShadow: '0 4px 24px 0 rgba(44,62,80,0.13)',
-                    border: '2px solid #1976d2',
+                    border: '2px solid #26a69a',
                   },
                 }}
                 onClick={() => setSelectedIndex(idx)}
               >
                 <Box display="flex" alignItems="center" justifyContent="space-between" mb={1}>
-                  <Typography variant="h6" fontWeight="bold" color="#1976d2">
-                    {formatTime(order.scheduledFor)} {capitalizeFirstLetter(order.orderType)}
+                  <Typography variant="h6" fontWeight="bold" color="#388e3c">
+                    {formatTime(order.scheduledFor || order.createdAt)} {capitalizeFirstLetter(order.orderType)}
                   </Typography>
                   <Typography variant="subtitle2" color="#607d8b" fontWeight="bold">
                     #{order._id.slice(-4)}
@@ -143,7 +157,7 @@ const ScheduledOrdersDialog: React.FC<ScheduledOrdersDialogProps> = ({ open, onC
                 <Stack spacing={0.5} ml={0.5}>
                   {order.items.map((item, index) => (
                     <Box key={index} display="flex" alignItems="center">
-                      <Box sx={{ width: 8, height: 8, borderRadius: '50%', background: '#1976d2', mr: 1 }} />
+                      <Box sx={{ width: 8, height: 8, borderRadius: '50%', background: '#388e3c', mr: 1 }} />
                       <Typography variant="body2" color="#263238">
                         <b>{item.quantity}</b> {item.size ? <span style={{ color: '#607d8b' }}>({item.size})</span> : null} {capitalizeFirstLetter(item.name)}
                       </Typography>
@@ -159,4 +173,4 @@ const ScheduledOrdersDialog: React.FC<ScheduledOrdersDialogProps> = ({ open, onC
   );
 };
 
-export default ScheduledOrdersDialog;
+export default OrdersDialog;

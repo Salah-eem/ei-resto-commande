@@ -9,16 +9,20 @@ import { useAppDispatch, useAppSelector } from '@/store/slices/hooks'
 import { RootState } from '@/store/store'
 import useLiveOrdersSocket from '@/hooks/useLiveOrdersSocket'
 
-import ScheduledOrdersDialog from '@/components/ScheduledOrdersDialog'
+import OrdersDialog from '@/components/OrdersDialog'
+import { OrderStatus } from '@/types/order'
 
 export default function LiveOrdersPage() {
   const dispatch = useAppDispatch()
-  const { orders, scheduledOrders, loading, error } = useAppSelector((state: RootState) => state.orders)
+  const { orders, loading, error } = useAppSelector((state: RootState) => state.orders)
+  const { preparedOrders, loading: loadingPrepared, error: errorPrepared } = useAppSelector((state: RootState) => state.orders);
+  const { scheduledOrders, loading: loadingScheduled, error: errorScheduled } = useAppSelector((state: RootState) => state.orders);
 
   useLiveOrdersSocket()
 
   // Dialog state
-  const [scheduledDialogOpen, setScheduledDialogOpen] = React.useState(false)
+  const [ordersDialogOpen, setOrdersDialogOpen] = React.useState(false)
+  const [ordersDialogType, setOrdersDialogType] = React.useState<'prepared' | 'scheduled'>('scheduled')
 
   // Combine live orders and scheduled orders that are due
   const [displayedOrders, setDisplayedOrders] = useState(orders)
@@ -35,33 +39,58 @@ export default function LiveOrdersPage() {
     setDisplayedOrders(merged)
   }, [orders, scheduledOrders])
 
-  // Rafraîchir toutes les 30s pour faire apparaître les scheduled qui deviennent live
+  // Rafraîchir toutes les 10s pour faire apparaître les scheduled qui deviennent live
   useEffect(() => {
-    const interval = setInterval(() => {
-      const now = new Date()
+    const updateDisplayedOrders = () => {
+      const now = new Date();
       const dueScheduled = (scheduledOrders || []).filter(
         o => o.scheduledFor && new Date(o.scheduledFor) <= now
-      )
-      const liveIds = new Set(orders.map(o => o._id))
-      const merged = [...orders, ...dueScheduled.filter(o => !liveIds.has(o._id))]
-      setDisplayedOrders(merged)
-    }, 30000)
-    return () => clearInterval(interval)
-  }, [orders, scheduledOrders])
+      );
+      const liveIds = new Set(orders.map(o => o._id));
+      const merged = [...orders, ...dueScheduled.filter(o => !liveIds.has(o._id))];
+      setDisplayedOrders(merged);
+    };
+    updateDisplayedOrders(); // Appel immédiat pour éviter le délai initial
+    const interval = setInterval(updateDisplayedOrders, 10000);
+    return () => clearInterval(interval);
+  }, [orders, scheduledOrders]);
+
 
   useEffect(() => {
-    const handleF2 = (e: KeyboardEvent) => {
+    const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'F2') {
-        setScheduledDialogOpen(prev => !prev)
+        e.preventDefault();
+        setOrdersDialogType('scheduled');
+        setOrdersDialogOpen(prev => !prev)
+      }
+      if (e.key === 'F3') {
+        e.preventDefault();
+        setOrdersDialogType('prepared');
+        setOrdersDialogOpen(prev => !prev)
       }
     }
-    window.addEventListener('keydown', handleF2)
-    return () => window.removeEventListener('keydown', handleF2)
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
   }, [])
 
   useEffect(() => {
     dispatch(fetchLiveOrders())
   }, [dispatch])
+
+  useEffect(() => {
+    if (!ordersDialogOpen || ordersDialogType !== 'scheduled') return;
+
+    // Liste des IDs des commandes live
+    const liveIds = new Set(orders.map(o => o._id));
+
+    const wasAnyScheduledNowLive = scheduledOrders.some(
+      o => o.orderStatus === OrderStatus.SCHEDULED && liveIds.has(o._id)
+    );
+    if (wasAnyScheduledNowLive) {
+      setOrdersDialogOpen(false);
+    }
+  }, [orders, scheduledOrders, ordersDialogOpen, ordersDialogType]);
+
 
   return (
     <Box minHeight="100vh" sx={{ background: 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)', py: { xs: 2, md: 6 } }}>
@@ -89,7 +118,22 @@ export default function LiveOrdersPage() {
           </Box>
         )}
       </Box>
-      <ScheduledOrdersDialog open={scheduledDialogOpen} onClose={() => setScheduledDialogOpen(false)} />
+      <OrdersDialog
+        open={ordersDialogOpen}
+        onClose={() => setOrdersDialogOpen(false)}
+        type={ordersDialogType}
+        orders={
+          ordersDialogType === 'prepared'
+            ? preparedOrders
+            : (scheduledOrders || [])
+                .filter(o => o.orderStatus === OrderStatus.SCHEDULED)
+                .filter(o => !orders.some(live => live._id === o._id)) // <- exclusion ici
+                .filter(o => o.orderStatus === OrderStatus.SCHEDULED && new Date(o.scheduledFor || '') > new Date())
+        }
+        loading={ordersDialogType === 'prepared' ? loadingPrepared : loadingScheduled}
+        error={ordersDialogType === 'prepared' ? errorPrepared : errorScheduled}
+        title={ordersDialogType === 'prepared' ? 'Prepared orders' : 'Scheduled orders'}
+      />
     </Box>
   )
 }

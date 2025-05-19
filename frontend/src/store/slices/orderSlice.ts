@@ -8,6 +8,7 @@ interface OrderState {
   orders: Order[];
   todayOrders: Order[];
   scheduledOrders: Order[];
+  preparedOrders: Order[];
   loading: boolean;
   error: string | null;
 }
@@ -17,6 +18,7 @@ const initialState: OrderState = {
   orders: [],
   todayOrders: [],
   scheduledOrders: [],
+  preparedOrders: [],
   loading: false,
   error: null,
 };
@@ -107,6 +109,21 @@ export const fetchScheduledOrders = createAsyncThunk(
     } catch (error: any) {
       return rejectWithValue(
         error.response?.data?.message || "Erreur lors du chargement des commandes programmées."
+      );
+    }
+  }
+);
+
+// 📌 Récupérer les commandes préparées
+export const fetchPreparedOrders = createAsyncThunk(
+  "orders/fetchPreparedOrders",
+  async (_, { rejectWithValue }) => {
+    try {
+      const response = await api.get("/order/prepared");
+      return response.data;
+    } catch (error: any) {
+      return rejectWithValue(
+        error.response?.data?.message || "Erreur lors du chargement des commandes préparées."
       );
     }
   }
@@ -230,6 +247,18 @@ const orderSlice = createSlice({
         state.scheduledOrders = action.payload;
       })
       .addCase(fetchScheduledOrders.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      })
+      .addCase(fetchPreparedOrders.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(fetchPreparedOrders.fulfilled, (state, action) => {
+        state.loading = false;
+        state.preparedOrders = action.payload;
+      })
+      .addCase(fetchPreparedOrders.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload as string;
       })

@@ -4,6 +4,7 @@ import { OrderItem } from "./orderItem";
 
 export enum OrderStatus {
   CONFIRMED = 'confirmed',
+  SCHEDULED = 'scheduled',
   IN_PREPARATION = 'in preparation',
   PREPARED = 'prepared',
   READY_FOR_PICKUP = 'ready for pickup',

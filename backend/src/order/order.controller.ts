@@ -46,10 +46,16 @@ export class OrderController {
       // On considère programmées : toutes les commandes dont la date de livraison prévue (scheduledFor) est aujourd'hui
       const start = startOfDay(new Date());
       const end = endOfDay(new Date());
-      // Si tu as un champ spécifique (ex: scheduledFor), adapte la requête ci-dessous
       return this.orderService.getScheduledOrders(start, end);
     }
-  
+
+    // Récupérer les commandes préparées
+    @Roles(Role.Admin, Role.Employee)
+    @Get('prepared')
+    async getPreparedOrders() {
+      return this.orderService.getPreparedOrders();
+    }
+
     // 📌 Récupérer les commandes d'un utilisateur
     @Get('user/:userId')
     async getOrdersByUser(@Param('userId') userId: string): Promise<Order[]> {
