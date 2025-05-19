@@ -28,7 +28,7 @@ export class OrderService {
     @InjectModel(OrderItem.name)
     private readonly orderItemModel: Model<OrderItemDocument>,
     private readonly restaurantService: RestaurantService,
-    private readonly gateway: LiveOrdersGateway,
+    private readonly liveOrdersGateway: LiveOrdersGateway,
   ) {}
 
 
@@ -141,13 +141,83 @@ export class OrderService {
   }
 
   private async _update(id: string, dto: Partial<Order>): Promise<Order> {
-    return this.orderModel
+    // Empêcher l'écrasement des items si non précisé dans dto
+    let updatedOrder: OrderDocument | null = null;
+    if (dto.items === undefined) {
+      const { items, ...rest } = dto;
+      dto = rest;
+    } else if (Array.isArray(dto.items)) {
+      // Séparer les items existants (avec _id objet ou string) des nouveaux (sans _id)
+      // On ne considère comme existant à mettre à jour que les objets ayant _id ET au moins une propriété modifiable
+      const isUpdatableObject = (item: any) =>
+        item && typeof item === 'object' && item._id && (
+          'quantity' in item || 'price' in item || 'size' in item || 'name' in item || 'image_url' in item || 'category' in item
+        );
+      const existingItems = dto.items.filter(isUpdatableObject);
+      const newItems = dto.items.filter((item: any) => !item || !item._id);
+      // Mettre à jour la quantité/prix/etc. des items existants
+      for (const item of existingItems) {
+        await this.orderItemModel.findByIdAndUpdate(item._id, {
+          $set: {
+            quantity: typeof item === 'object' && 'quantity' in item ? item.quantity : undefined,
+            price: typeof item === 'object' && 'price' in item ? item.price : undefined,
+            size: typeof item === 'object' && 'size' in item ? item.size : undefined,
+            name: (typeof item === 'object' && 'name' in item) ? item.name : undefined,
+            image_url: (typeof item === 'object' && 'image_url' in item) ? item.image_url : undefined,
+            category: typeof item === 'object' && 'category' in item ? item.category : undefined,
+          }
+        });
+      }
+      // On ne garde que les _id pour la référence dans la commande
+      const existingItemIds = existingItems.map((item: any) => item._id).concat(
+        dto.items.filter((item: any) => typeof item === 'string' || item instanceof Types.ObjectId)
+      );
+      // Créer les nouveaux items en base
+      if (newItems.length > 0) {
+        const created = await this.orderItemModel.insertMany(
+          newItems.map(i => ({ ...i, orderId: this.toObjectId(id), preparedQuantity: 0, isPrepared: false }))
+        );
+        dto.items = [...existingItemIds, ...created.map(i => i._id)];
+      } else {
+        dto.items = existingItemIds;
+      }
+    }
+    // Si scheduledFor est fourni, vérifier si on peut passer la commande à SCHEDULED
+    if (dto.scheduledFor) {
+      // Charger les items de la commande (après update éventuel)
+      const orderWithItems = await this.orderModel.findById(id).populate('items').exec();
+      if (!orderWithItems) throw new NotFoundException('Order not found for scheduled check');
+      const hasPrepared = (orderWithItems.items as any[]).some(item => item.isPrepared === true);
+      if (hasPrepared) {
+        // Interdit la modification, lève une erreur explicite
+        throw new BadRequestException("Impossible de programmer la commande : au moins un article est déjà préparé.");
+      } else {
+        dto.orderStatus = OrderStatus.SCHEDULED;
+      }
+    }
+    // On met à jour la commande sans le totalAmount (sera recalculé juste après)
+    updatedOrder = await this.orderModel
       .findByIdAndUpdate(id, dto, { new: true })
-      .orFail(() => new NotFoundException('Order not found'))
-      .then(o => {
-        this.gateway.sendUpdate();
-        return o;
-      });
+      .orFail(() => new NotFoundException('Order not found'));
+
+    // Recalcul du totalAmount à partir des items réels
+    const populatedOrder = await this.orderModel.findById(id).populate('items').exec();
+    if (!populatedOrder) throw new NotFoundException('Order not found after update');
+    const items = (populatedOrder.items as any[]);
+    let totalAmount = items.reduce((sum, i) => sum + (i.price * i.quantity), 0);
+    // Ajout ou retrait des frais de livraison selon le type de commande
+    const orderType = dto.orderType ?? populatedOrder.orderType;
+    if (orderType === OrderType.DELIVERY) {
+      const restaurant = this.restaurantService.getRestaurant();
+      if (restaurant && restaurant.deliveryFee) {
+        totalAmount += restaurant.deliveryFee;
+      }
+    }
+    // Mise à jour du totalAmount
+    updatedOrder = await this.orderModel.findByIdAndUpdate(id, { totalAmount }, { new: true })
+      .orFail(() => new NotFoundException('Order not found after total update'));
+    this.liveOrdersGateway.sendUpdate();
+    return updatedOrder;
   }
 
   async updatePosition(id: string, pos: { lat: number; lng: number }): Promise<Order> {
@@ -180,7 +250,7 @@ export class OrderService {
       order.orderStatus = OrderStatus.PREPARED;
       await order.save();
     }
-    this.gateway.sendUpdate();
+    this.liveOrdersGateway.sendUpdate();
     return order;
   }
 
@@ -189,7 +259,7 @@ export class OrderService {
       .findByIdAndUpdate(orderId, { orderStatus: status }, { new: true })
       .orFail(() => new NotFoundException('Order not found'))
       .then(o => {
-        this.gateway.sendUpdate();
+        this.liveOrdersGateway.sendUpdate();
         return o;
       });
   }
@@ -266,7 +336,7 @@ export class OrderService {
       await this.cartModel.updateOne({ userId: dto.userId }, { items: [] });
     }
 
-    this.gateway.sendUpdate();
+    this.liveOrdersGateway.sendUpdate();
     return updatedOrder;
   }
 
@@ -603,7 +673,7 @@ export class OrderService {
       { $set: { orderStatus: OrderStatus.IN_PREPARATION } }
     );
     if (result.modifiedCount > 0) {
-      this.gateway.sendUpdate();
+      this.liveOrdersGateway.sendUpdate();
     }
   }
 

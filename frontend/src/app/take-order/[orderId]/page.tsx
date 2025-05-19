@@ -265,18 +265,36 @@ const TakeOrderPage: React.FC = () => {
         paymentMethod: values.paymentMethod,
         paymentStatus: values.paymentStatus,
         scheduledFor:
-          values.scheduledFor && isCreateMode
+          values.scheduledFor //&& isCreateMode
             ? values.scheduledFor // string locale du champ input (YYYY-MM-DDTHH:mm)
             : undefined,
       };
 
+      let result;
       if (isCreateMode) {
-        await dispatch(createOrder(payload) as any);
+        result = await dispatch(createOrder(payload) as any);
       } else {
-        // 1️⃣ on met à jour
-        await dispatch(updateOrder({ orderId, orderData: payload }) as any);
-        // 2️⃣ on re-récupère l’order fraîchement mise à jour
+        result = await dispatch(updateOrder({ orderId, orderData: payload }) as any);
         await dispatch(fetchOrder(orderId) as any);
+      }      
+      // Simplified error extraction
+      const getErrorMessage = (res: any) => {
+        return (
+          res?.error?.data?.message ||
+          res?.payload?.message ||
+          (typeof res?.error === 'string' && res.error !== 'rejected' && res.error) ||
+          (typeof res?.payload === 'string' && res.payload !== 'rejected' && res.payload) ||
+          res?.error?.message ||
+          res?.error?.statusText ||
+          res?.error?.status ||
+          res?.meta?.rejectedWithValue ||
+          null
+        );
+      };
+      const errorMsg = getErrorMessage(result);
+      if (result?.error || result?.payload?.message) {
+        setAlert({ type: "error", message: errorMsg || '❌ An error occurred.' });
+        return;
       }
 
       setAlert({
@@ -287,11 +305,10 @@ const TakeOrderPage: React.FC = () => {
       });
       resetForm();
       setTab(0);
-    } catch (err) {
-      console.error(
-        `Error while ${isCreateMode ? "creating" : "updating"}: ${err}`
-      );
-      setAlert({ type: "error", message: "❌ An error occurred." });
+    } catch (err: any) {
+      // Fallback for unexpected errors
+      let errorMsg = err?.response?.data?.message || err?.message || '❌ An error occurred.';
+      setAlert({ type: "error", message: errorMsg });
     } finally {
       setIsSubmitting(false); // ✅ Stoppe le loader quoi qu’il arrive
     }
