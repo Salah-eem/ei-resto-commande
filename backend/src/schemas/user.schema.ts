@@ -1,4 +1,5 @@
 import { Prop, Schema, SchemaFactory } from "@nestjs/mongoose";
+import { Address } from "./address.schema";
 
 export type UserDocument = User & Document;
 
@@ -21,6 +22,12 @@ export class User {
 
     @Prop()
     lastName: string;
+
+    @Prop( { required: false })
+    phone: string;
+
+    @Prop({ required: false, type: [Address] })
+    addresses: Address[];
 
     @Prop({default: Role.Client})
     role: Role;

@@ -51,6 +51,7 @@ import { fetchRestaurantInfo } from "@/store/slices/restaurantSlice";
 import axios from "axios";
 import { useRouter } from "next/navigation";
 import { OrderType } from "@/types/order";
+import { RootState } from "@/store/store";
 
 const STRIPE_PUBLIC_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLIC_KEY!;
 const API_URL = process.env.NEXT_PUBLIC_API_URL!;
@@ -90,21 +91,23 @@ const CartPage: React.FC = () => {
     dispatch(fetchRestaurantInfo());
   }, [dispatch, userId]);
 
-  const subtotal = cartItems.reduce((sum, i) => sum + i.price * i.quantity, 0);
-  const fee = orderType === "delivery" ? deliveryFee ?? 0 : 0;
-  const total = subtotal + fee;
+  // Préremplir les champs si l'utilisateur est connecté
+  const userProfile = useAppSelector((state: RootState) => state.user.profile);
 
-  const handleQuantityChange = (
-    productId: string,
-    size: string | undefined,
-    qty: number
-  ) => {
-    if (!userId) return;
-    if (qty > 0)
-      dispatch(updateCartQuantity({ userId, productId, size, quantity: qty }));
-    else dispatch(removeFromCart({ userId, productId, size }));
-  };
+  useEffect(() => {
+    if (userProfile) {
+      formik.setFieldValue("name", `${userProfile.firstName ?? ''} ${userProfile.lastName ?? ''}`.trim());
+      formik.setFieldValue("phone", userProfile.phone ?? "");
+      if (orderType === OrderType.DELIVERY && userProfile.addresses.length > 0) {
+        formik.setFieldValue("address", userProfile.addresses[0]?.street || "");
+        formik.setFieldValue("streetNumber", userProfile.addresses[0]?.streetNumber ? String(userProfile.addresses[0]?.streetNumber) : "");
+        formik.setFieldValue("city", userProfile.addresses[0]?.city || "");
+        formik.setFieldValue("postalCode", userProfile.addresses[0]?.postalCode || "");
+      }
+    }
+  }, [userProfile, orderType]);
 
+  // Toujours fournir une valeur string par défaut pour tous les champs contrôlés
   const formik = useFormik({
     enableReinitialize: true,
     initialValues: {
@@ -188,6 +191,21 @@ const CartPage: React.FC = () => {
       }
     },
   });
+
+  const subtotal = cartItems.reduce((sum, i) => sum + i.price * i.quantity, 0);
+  const fee = orderType === "delivery" ? deliveryFee ?? 0 : 0;
+  const total = subtotal + fee;
+
+  const handleQuantityChange = (
+    productId: string,
+    size: string | undefined,
+    qty: number
+  ) => {
+    if (!userId) return;
+    if (qty > 0)
+      dispatch(updateCartQuantity({ userId, productId, size, quantity: qty }));
+    else dispatch(removeFromCart({ userId, productId, size }));
+  };
 
   if (cartLoading && cartItems.length === 0)
     return (

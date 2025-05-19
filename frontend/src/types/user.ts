@@ -1,3 +1,5 @@
+import { Address } from "./address";
+
 export enum Role {
     Admin = 0, Employee = 1, Client = 2
 }
@@ -7,5 +9,7 @@ export interface User {
     email: string;
     firstName: string;
     lastName: string;
+    phone?: string;
+    addresses: Address[];
     role: Role;
 }

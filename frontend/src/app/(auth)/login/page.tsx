@@ -150,7 +150,7 @@ const LoginPage: React.FC = () => {
       </Paper>
 
       <Box sx={{ mt: 2, textAlign: 'center' }}>
-        <Typography variant="body2">email client : test@test.com</Typography>
+        <Typography variant="body2">email client : client@email.com</Typography>
         <Typography variant="body2">email employee : aaa@aaa.aa</Typography>
         <Typography variant="body2">email admin : admin@admin.com</Typography>
         <Typography variant="body2">password : Password1,</Typography>

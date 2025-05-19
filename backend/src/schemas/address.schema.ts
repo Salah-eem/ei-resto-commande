@@ -5,10 +5,10 @@ export type AddressDocument = Address & Document;
 
 @Schema()
 export class Address extends Document {
-  @Prop({ required: true })
+  @Prop({ required: false })
   lat: number;
 
-  @Prop({ required: true })
+  @Prop({ required: false })
   lng: number;
 
   @Prop({ required: true })
