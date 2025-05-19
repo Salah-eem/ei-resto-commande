@@ -12,7 +12,6 @@ import { OrderModule } from './order/order.module';
 import { AddressModule } from './address/address.module';
 import { DeliveryGateway } from './gateway/delivery.gateway';
 import { RestaurantModule } from './restaurant/restaurant.module';
-import { LiveOrdersGateway } from './gateway/live-orders.gateway';
 import { CommonModule } from './common/common.module';
 import { ScheduleModule } from '@nestjs/schedule';
 
@@ -37,7 +36,6 @@ import { ScheduleModule } from '@nestjs/schedule';
     CommonModule,
   ],
   controllers: [],
-    
-  providers: [ DeliveryGateway, LiveOrdersGateway ],
+  providers: [DeliveryGateway,],
 })
 export class AppModule {}

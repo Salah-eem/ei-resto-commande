@@ -1,7 +1,10 @@
 import {
   BadRequestException,
+  forwardRef,
+  Inject,
   Injectable,
   NotFoundException,
+  OnModuleInit,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -18,18 +21,33 @@ import { CreateOrderDto } from './dto/create-order.dto';
 import { CreateOrderByEmployeeDto } from './dto/create-order-by-employee.dto';
 import { OrderItem, OrderItemDocument } from 'src/schemas/order-item.schema';
 import { endOfDay, startOfDay } from 'date-fns';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { SchedulerRegistry, Cron, CronExpression } from '@nestjs/schedule';
 
 @Injectable()
-export class OrderService {
+export class OrderService implements OnModuleInit {
   constructor(
     @InjectModel(Order.name) private readonly orderModel: Model<OrderDocument>,
     @InjectModel(Cart.name) private readonly cartModel: Model<CartDocument>,
     @InjectModel(OrderItem.name)
     private readonly orderItemModel: Model<OrderItemDocument>,
     private readonly restaurantService: RestaurantService,
+    @Inject(forwardRef(() => LiveOrdersGateway))
     private readonly liveOrdersGateway: LiveOrdersGateway,
+    private schedulerRegistry: SchedulerRegistry,
   ) {}
+
+
+  onModuleInit() {
+    // Arrête silencieusement le job s’il existe
+    try {
+      const job = this.schedulerRegistry.getCronJob('promoteScheduledOrders');
+      job.stop();
+      // tu peux logger :
+      // this.logger.log('promoteScheduledOrders cron stopped at startup');
+    } catch {
+      // pas encore enregistré ? on ignore
+    }
+  }
 
 
   async findOrdersInDelivery(): Promise<Order[]> {
@@ -190,7 +208,7 @@ export class OrderService {
       const hasPrepared = (orderWithItems.items as any[]).some(item => item.isPrepared === true);
       if (hasPrepared) {
         // Interdit la modification, lève une erreur explicite
-        throw new BadRequestException("Impossible de programmer la commande : au moins un article est déjà préparé.");
+        throw new BadRequestException("Impossible to schedule an order that has already been prepared or has items prepared");
       } else {
         dto.orderStatus = OrderStatus.SCHEDULED;
       }
@@ -666,6 +684,9 @@ export class OrderService {
 
   // Promote scheduled orders to in preparation if due
   async promoteScheduledOrdersIfDue() {
+    if (!this.liveOrdersGateway.hasClients()) {
+      return;
+    }
     const now = new Date();
     // On ne notifie que s'il y a eu des changements
     const result = await this.orderModel.updateMany(
@@ -678,8 +699,19 @@ export class OrderService {
   }
 
   // Cron pour promouvoir les commandes programmées à IN_PREPARATION
-  @Cron(CronExpression.EVERY_10_SECONDS)
+  @Cron(CronExpression.EVERY_10_SECONDS, { name: 'promoteScheduledOrders' })
   async promoteScheduledOrdersCron() {
     await this.promoteScheduledOrdersIfDue();
+  }
+
+   // méthodes pour démarrer/stopper le cron à la volée
+  startPromoteScheduledCron() {
+    const job = this.schedulerRegistry.getCronJob('promoteScheduledOrders');
+    job.start();
+  }
+
+  stopPromoteScheduledCron() {
+    const job = this.schedulerRegistry.getCronJob('promoteScheduledOrders');
+    job.stop();
   }
 }

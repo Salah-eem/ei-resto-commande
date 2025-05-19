@@ -14,8 +14,18 @@ import { UserService } from 'src/user/user.service';
             MongooseModule.forFeature([{ name: 'OrderItem', schema: OrderItemSchema}]),
             MongooseModule.forFeature([{ name: 'Cart', schema: CartSchema}]),
             MongooseModule.forFeature([{ name: 'User', schema: UserSchema}])],
-  providers: [OrderService, LiveOrdersGateway, UserService],
+  providers: [
+    OrderService, {
+      provide: LiveOrdersGateway,
+      useClass: LiveOrdersGateway,
+    },
+    LiveOrdersGateway,
+    UserService,
+  ],
   controllers: [OrderController],
-  exports: [OrderService],
+  exports: [
+    OrderService,
+    LiveOrdersGateway,
+  ],
 })
 export class OrderModule {}
