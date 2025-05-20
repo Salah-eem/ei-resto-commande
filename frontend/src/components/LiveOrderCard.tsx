@@ -85,7 +85,7 @@ export default function LiveOrderCard({
 
         <Divider sx={{ my: 2 }} />
 
-        <List dense>
+        <List key={order._id} dense>
           {unprepared.map(({ item, originalIdx }, unpreparedIdx) => {
             // on checke la sélection par rapport à l'index dans la liste des non préparés
             const isSelected = unpreparedIdx === selectedItemIndex

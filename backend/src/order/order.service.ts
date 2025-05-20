@@ -196,17 +196,33 @@ export class OrderService implements OnModuleInit {
           newItems.map(i => ({ ...i, orderId: this.toObjectId(id), preparedQuantity: 0, isPrepared: false }))
         );
         dto.items = [...existingItemIds, ...created.map(i => i._id)];
+        // Si la commande était PREPARED, repasser à IN_PREPARATION
+        const currentOrder = await this.orderModel.findById(id).exec();
+        if (currentOrder && currentOrder.orderStatus === OrderStatus.PREPARED) {
+          dto.orderStatus = OrderStatus.IN_PREPARATION;
+        }
       } else {
         dto.items = existingItemIds;
       }
     }
     // Si scheduledFor est fourni, vérifier si on peut passer la commande à SCHEDULED
     if (dto.scheduledFor) {
-      // Charger les items de la commande (après update éventuel)
+      // Charger la commande d'origine pour comparer les dates
       const orderWithItems = await this.orderModel.findById(id).populate('items').exec();
       if (!orderWithItems) throw new NotFoundException('Order not found for scheduled check');
       const hasPrepared = (orderWithItems.items as any[]).some(item => item.isPrepared === true);
-      if (hasPrepared) {
+      const now = new Date();
+      const scheduledDate = new Date(dto.scheduledFor);
+      // scheduledFor doit être dans le futur
+      if (scheduledDate <= now) {
+        throw new BadRequestException("The scheduled date must be in the future");
+      }
+      // Si la commande a déjà été préparée ou si elle a des items préparés, on ne peut pas la programmer
+      if (!orderWithItems.scheduledFor && hasPrepared) {
+        throw new BadRequestException("Impossible to schedule an order that has already been prepared or has items prepared");
+      }
+      // Vérification de la date : la nouvelle date doit être strictement postérieure à l'ancienne (si déjà programmée)
+      else if (orderWithItems.scheduledFor && hasPrepared && scheduledDate > new Date(orderWithItems.scheduledFor)) {
         // Interdit la modification, lève une erreur explicite
         throw new BadRequestException("Impossible to schedule an order that has already been prepared or has items prepared");
       } else {

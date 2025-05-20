@@ -29,7 +29,9 @@ import {
 import { Remove, ShoppingCart, ArrowBackIosNew } from "@mui/icons-material";
 import { Formik, Form, FieldArray } from "formik";
 import * as Yup from "yup";
-
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { DateTimePicker }      from '@mui/x-date-pickers/DateTimePicker';
+import { AdapterDateFns }      from '@mui/x-date-pickers/AdapterDateFns';
 import { fetchProducts } from "@/store/slices/productSlice";
 import { fetchCategories } from "@/store/slices/categorySlice";
 import {
@@ -50,6 +52,7 @@ import NominatimAutocomplete from "@/components/NominatimAutocomplete";
 import { get } from "lodash";
 import GeoapifyAutocomplete from "@/components/GeoapifyAutocomplete";
 import { OrderItem } from "@/types/orderItem";
+import { isSameDay } from "date-fns";
 
 // 🎯 Type uniquement pour les valeurs du formulaire
 type OrderFormValues = {
@@ -416,7 +419,68 @@ const TakeOrderPage: React.FC = () => {
                         helperText={touched.scheduledFor && errors.scheduledFor}
                         sx={{ mt: 2, mb: 2 }}
                         InputLabelProps={{ shrink: true }}
+                        inputProps={{ min: new Date().toISOString().substring(0, 16) }}
                       />
+                    {/* <LocalizationProvider dateAdapter={AdapterDateFns}>
+  <DateTimePicker
+    label="Scheduled for"
+    value={values.scheduledFor ? new Date(values.scheduledFor) : null}
+    onChange={newValue => {
+      if (newValue) {
+        const iso = newValue.toISOString().substring(0, 16);
+        setFieldValue('scheduledFor', iso);
+      } else {
+        setFieldValue('scheduledFor', null);
+      }
+    }}
+    disablePast
+    minDateTime={new Date()}
+    shouldDisableDate={date => date < new Date(new Date().setHours(0,0,0,0))}
+    shouldDisableTime={(timeValue, viewType) => {
+      const now = new Date();
+      if (values.scheduledFor) {
+        const pickerDate = new Date(values.scheduledFor);
+        if (isSameDay(pickerDate, now)) {
+          if (viewType === 'hours') {
+            return timeValue.getHours() < now.getHours();
+          }
+          if (viewType === 'minutes') {
+            return (
+              pickerDate.getHours() === now.getHours() &&
+              timeValue.getMinutes() < now.getMinutes()
+            );
+          }
+        }
+      }
+      return false;
+    }}
+    skipDisabled
+    slotProps={{
+      day: {
+        sx: {
+          '&.Mui-disabled': {
+            display: 'none',
+          },
+        },
+      },
+      digitalClockItem: {
+        sx: {
+          '&.Mui-disabled': {
+            display: 'none',
+          },
+        },
+      },
+      textField: {
+        fullWidth: true,
+        error: !!(errors.scheduledFor && touched.scheduledFor),
+        helperText: touched.scheduledFor && errors.scheduledFor,
+        sx: { mt: 2, mb: 2 },
+      },
+    }}
+  />
+</LocalizationProvider> */}
+
+
                     <FormLabel>Order Type</FormLabel>
                     <RadioGroup
                       row
