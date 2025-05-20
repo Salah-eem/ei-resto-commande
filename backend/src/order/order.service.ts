@@ -325,6 +325,14 @@ export class OrderService implements OnModuleInit {
 
   private async _create(args: { dto: any; isEmployee: boolean; userName?: string }): Promise<Order> {
     const { dto, isEmployee, userName } = args;
+    if (dto.scheduledFor && dto.scheduledFor.length === 0) {
+      const now = new Date();
+      const scheduledDate = new Date(dto.scheduledFor);
+      // scheduledFor doit être dans le futur
+      if (scheduledDate <= now) {
+        throw new BadRequestException("The scheduled date must be in the future");
+      }
+    }
     const itemsSource = isEmployee
       ? (dto.items as any[]).map(i => this._mapItem(i))
       : (await this._getCartItems(dto.userId)).map(i => this._mapItem(i));
