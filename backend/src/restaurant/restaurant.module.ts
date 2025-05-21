@@ -6,7 +6,10 @@ import { RestaurantSchema } from 'src/schemas/restaurant.schema';
 
 @Global()
 @Module({
-  imports: [MongooseModule.forFeature([{ name: 'Restaurant', schema: RestaurantSchema}])],
+  imports: [MongooseModule.forFeature([{ name: 'Restaurant', schema: RestaurantSchema}]),
+            MongooseModule.forFeature([{ name: 'Order', schema: RestaurantSchema}]),
+            MongooseModule.forFeature([{ name: 'User', schema: RestaurantSchema}])
+            ],
   controllers: [RestaurantController],
   providers: [RestaurantService],
   exports: [RestaurantService],
