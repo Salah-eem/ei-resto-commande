@@ -28,10 +28,11 @@ export const fetchUserProfile = createAsyncThunk(
       const response = await api.get("/user/profile");
       return response.data as User;
     } catch (error: any) {
-      return rejectWithValue(
-        error.response?.data?.message ||
-          "Erreur lors de la récupération du profil utilisateur"
-      );
+      return rejectWithValue({
+        message:
+          error.response?.data?.message ||
+          "Erreur lors de la récupération du profil utilisateur",
+      });
     }
   }
 );
@@ -44,9 +45,9 @@ export const fetchAllUsers = createAsyncThunk(
       const response = await api.get("/user");
       return response.data as User[];
     } catch (error: any) {
-      return rejectWithValue(
-        error.response?.data?.message || "Error while loading users"
-      );
+      return rejectWithValue({
+        message: error.response?.data?.message || "Error while loading users",
+      });
     }
   }
 );
@@ -59,9 +60,9 @@ export const createUser = createAsyncThunk(
       const response = await api.post("/user", user);
       return response.data as User;
     } catch (error: any) {
-      return rejectWithValue(
-        error.response?.data?.message || "Error while creating user"
-      );
+      return rejectWithValue({
+        message: error.response?.data?.message || "Error while creating user",
+      });
     }
   }
 );
@@ -74,9 +75,9 @@ export const updateUser = createAsyncThunk(
       const response = await api.put(`/user/${id}`, data);
       return response.data as User;
     } catch (error: any) {
-      return rejectWithValue(
-        error.response?.data?.message || "Error while updating user"
-      );
+      return rejectWithValue({
+        message: error.response?.data?.message || "Error while updating user",
+      });
     }
   }
 );
@@ -89,9 +90,9 @@ export const deleteUserById = createAsyncThunk(
       await api.delete(`/user/${id}`);
       return id;
     } catch (error: any) {
-      return rejectWithValue(
-        error.response?.data?.message || "Error while deleting user"
-      );
+      return rejectWithValue({
+        message: error.response?.data?.message || "Error while deleting user",
+      });
     }
   }
 );
