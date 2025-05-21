@@ -31,7 +31,7 @@ export class AuthService {
   }
         
   async login(dto: LoginDto) {
-    const user = await this.userService.findByEmail(dto.email);
+    const user = await this.userService.findOne({ email: dto.email });
     if (!user)
       throw new ForbiddenException('Credentials incorrect');
     const pwMatches = await bcrypt.compare(dto.password, user.password);
