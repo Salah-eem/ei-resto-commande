@@ -31,6 +31,9 @@ export class User {
 
     @Prop({default: Role.Client})
     role: Role;
+
+    @Prop({ required: false })
+    photoUrl: string;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

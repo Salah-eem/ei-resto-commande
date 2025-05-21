@@ -9,11 +9,10 @@ import {
   Put,
   Request,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
 import { UserService } from './user.service';
-//import { JwtGuard } from '../auth/guard';
-//import { JwtGuard } from '../auth/guard/jwt.guard';
-
 import { UserDto } from './dto/user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -22,6 +21,9 @@ import { GetUser } from 'src/common/decorators/get-user.decorator';
 import { Role } from 'src/schemas/user.schema';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { Public } from 'src/common/decorators/public.decorator';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { extname } from 'path';
 
 @UseGuards(JwtGuard)
 @Controller('user')
@@ -57,12 +59,48 @@ export class UserController {
     return await this.userService.create(dto);
   }
 
+  @Put('photo')
+  @UseInterceptors(FileInterceptor('file', {
+    storage: diskStorage({
+      destination: './public/images/users',
+      filename: (req, file, cb) => {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+        cb(null, uniqueSuffix + extname(file.originalname));
+      },
+    }),
+    fileFilter: (req, file, cb) => {
+      if (!file.mimetype.match(/\/(jpg|jpeg|png|gif)$/)) {
+        return cb(new Error('Only image files are allowed!'), false);
+      }
+      cb(null, true);
+    },
+    limits: { fileSize: 2 * 1024 * 1024 },
+  }))
+  async updatePhoto(
+    @UploadedFile() file: Express.Multer.File,
+    @GetUser() user: any
+  ) {
+    if (!file) {
+      throw new Error('No file uploaded');
+    }
+    // Met à jour le champ photoUrl de l'utilisateur
+    const photoUrl = `/images/users/${file.filename}`;
+    console.log('photoUrl', photoUrl);
+    console.log('user', user);
+    await this.userService.update(user.userId, { photoUrl });
+    // Retourne le profil à jour
+    return this.userService.findByEmail(user.email);
+  }
+
   @Put(':id')
   async update(
     @GetUser() currentUser: any,
     @Param('id') id: string,
     @Body() dto: UpdateUserDto,
   ) {
+    console.log('currentUser', currentUser);
+    console.log('id', id);  
+    console.log('dto', dto);
     // Only admin can update the role
     if (dto.role !== undefined && currentUser.role != Role.Admin) {
       throw new ForbiddenException('Only admin can modify the user role');

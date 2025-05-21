@@ -10,17 +10,19 @@ import {
   Chip,
   Tabs,
   Tab,
+  IconButton,
 } from "@mui/material";
 import { useAppDispatch, useAppSelector } from "@/store/slices/hooks";
 import { fetchUserProfile, updateUser } from "@/store/slices/userSlice";
 import Link from "next/link";
-import AccountCircleIcon from "@mui/icons-material/AccountCircle";
 import EmailIcon from "@mui/icons-material/Email";
 import PhoneIcon from "@mui/icons-material/Phone";
 import BadgeIcon from "@mui/icons-material/Badge";
 import TextField from "@mui/material/TextField";
 import SaveIcon from "@mui/icons-material/Save";
 import LockIcon from "@mui/icons-material/Lock";
+import AccountCircleIcon from "@mui/icons-material/AccountCircle";
+import PhotoCamera from "@mui/icons-material/PhotoCamera";
 import { Role } from "@/types/user";
 import { useFormik } from "formik";
 import * as yup from "yup";
@@ -28,6 +30,7 @@ import api from "@/lib/api";
 import { isValidPhoneNumber } from "libphonenumber-js";
 import InputAdornment from "@mui/material/InputAdornment";
 import MenuItem from "@mui/material/MenuItem";
+import Avatar from "@mui/material/Avatar";
 
 // Liste d'indicatifs pays
 const countryCodes: { code: string; label: string }[] = [
@@ -105,6 +108,9 @@ const ProfilePage: React.FC = () => {
     string | null
   >(null);
   const [countryCode, setCountryCode] = useState<string>(countryCodes[0].code);
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const [photoError, setPhotoError] = useState<string | null>(null);
+  const [photoSuccess, setPhotoSuccess] = useState(false);
   const debounceRef = React.useRef<{
     email?: NodeJS.Timeout;
     name?: NodeJS.Timeout;
@@ -302,6 +308,26 @@ const ProfilePage: React.FC = () => {
     profileFormik.errors,
   ]);
 
+  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || !e.target.files[0]) return;
+    setPhotoUploading(true);
+    setPhotoError(null);
+    setPhotoSuccess(false);
+    const formData = new FormData();
+    formData.append("file", e.target.files[0]);
+    try {
+      await api.put("/user/photo", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      await dispatch(fetchUserProfile());
+      setPhotoSuccess(true);
+    } catch (err: any) {
+      setPhotoError(err?.response?.data?.message || "Error uploading photo");
+    } finally {
+      setPhotoUploading(false);
+    }
+  };
+
   if (!token) {
     return (
       <Box
@@ -369,22 +395,75 @@ const ProfilePage: React.FC = () => {
               mb: 2,
             }}
           >
-            <Box
-              sx={{
-                width: 100,
-                height: 100,
-                borderRadius: "50%",
-                background:
-                  "linear-gradient(135deg, #1976d2 60%, #42a5f5 100%)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                mb: 2,
-                boxShadow: "0 2px 12px 0 rgba(25, 118, 210, 0.15)",
-              }}
-            >
-              <AccountCircleIcon sx={{ fontSize: 70, color: "#fff" }} />
+            <Box sx={{ position: "relative", display: "inline-block", mb: 2 }}>
+              <Avatar
+                src={
+                  profile.photoUrl
+                    ? `${process.env.NEXT_PUBLIC_API_URL}/${profile.photoUrl}`
+                    : undefined
+                }
+                alt={`${profile.firstName} ${profile.lastName}`}
+                sx={{
+                  width: 100,
+                  height: 100,
+                  fontSize: 40,
+                  bgcolor: "#1976d2",
+                }}
+              >
+                {!profile.photoUrl &&
+                  `${profile.firstName?.[0] || ""}${
+                    profile.lastName?.[0] || ""
+                  }`}
+              </Avatar>
+
+              <IconButton
+                component="label"
+                htmlFor="upload-photo"
+                sx={{
+                  position: "absolute",
+                  bottom: -4,
+                  right: -4,
+                  bgcolor: "#fff",
+                  color: "#1976d2",
+                  p: 0.5,
+                  borderRadius: "50%",
+                  boxShadow: 2,
+                  zIndex: 1,
+                }}
+                disabled={photoUploading}
+              >
+                <input
+                  hidden
+                  id="upload-photo"
+                  type="file"
+                  accept="image/*"
+                  onChange={handlePhotoChange}
+                />
+                <PhotoCamera fontSize="large" />
+              </IconButton>
+
+              {photoUploading && (
+                <CircularProgress
+                  size={32}
+                  sx={{
+                    position: "absolute",
+                    bottom: -4,
+                    right: -4,
+                    zIndex: 2,
+                  }}
+                />
+              )}
             </Box>
+            {photoError && (
+              <Alert severity="error" sx={{ mb: 1 }}>
+                {photoError}
+              </Alert>
+            )}
+            {photoSuccess && (
+                <Alert severity="success" sx={{ mb: 1 }}>
+                    Photo uploaded successfully!
+                </Alert>
+            )}
             <Typography
               variant="h5"
               fontWeight={700}

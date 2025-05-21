@@ -37,4 +37,7 @@ export class CreateUserDto {
   @IsOptional()
   @IsPhoneNumber()
   phone?: string;
+
+  @IsOptional()
+  photoUrl?: string;
 }

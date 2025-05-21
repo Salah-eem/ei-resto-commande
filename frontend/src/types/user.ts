@@ -13,4 +13,5 @@ export interface User {
     phone?: string;
     addresses: Address[];
     role: Role;
+    photoUrl?: string;
 }

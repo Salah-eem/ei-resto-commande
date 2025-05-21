@@ -26,4 +26,7 @@ export class UpdateUserDto {
 
     @IsOptional()
     role?: Role;
+
+    @IsOptional()
+    photoUrl?: string;
 }
