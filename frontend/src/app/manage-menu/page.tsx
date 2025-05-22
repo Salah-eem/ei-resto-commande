@@ -518,6 +518,40 @@ const MenuManager: React.FC = () => {
                   sx={{ mt: 2 }}
                   inputProps={{ min: 0 }}
                 />
+
+                {/* Image upload */}
+                <Box sx={{ mt: 2, mb: 1 }}>
+                  <Button
+                    variant="outlined"
+                    component="label"
+                  >
+                    {values.image_url ? 'Change Image' : 'Upload Image'}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      hidden
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        const formData = new FormData();
+                        formData.append('file', file);
+                        try {
+                          const res = await api.put('/product/image/' + values._id, formData, {
+                            headers: { 'Content-Type': 'multipart/form-data' },
+                          });
+                          setFieldValue('image_url', res.data.image_url); 
+                        } catch (err) {
+                          alert('Image upload failed');
+                        }
+                      }}
+                    />
+                  </Button>
+                  {values.image_url && (
+                    <Box sx={{ mt: 1 }}>
+                      <img src={`${process.env.NEXT_PUBLIC_API_URL}/${values.image_url}`} alt="Product" style={{ maxWidth: 120, maxHeight: 120, borderRadius: 8 }} />
+                    </Box>
+                  )}
+                </Box>
               </DialogContent>
               <DialogActions>
                 <Button onClick={() => setProdDialogOpen(false)} disabled={isSubmitting}>Cancel</Button>

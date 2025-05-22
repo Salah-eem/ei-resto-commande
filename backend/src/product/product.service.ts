@@ -84,4 +84,22 @@ export class ProductService {
       .exec();
     return !product;
   }
+
+  async updateProductImage(
+    productId: string,
+    imageUrl: string,
+  ): Promise<Product> {
+    const updatedProduct = await this.productModel
+      .findByIdAndUpdate(productId, { image_url: imageUrl }, {
+        new: true,
+        runValidators: true,
+      })
+      .exec();
+
+    if (!updatedProduct) {
+      throw new NotFoundException('Product not found.');
+    }
+    return updatedProduct;
+  }
+
 }
