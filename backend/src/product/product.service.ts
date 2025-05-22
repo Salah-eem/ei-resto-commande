@@ -81,15 +81,16 @@ export class ProductService {
   async isNameUnique(name: string, prodId?: string): Promise<boolean> {
     // Normalise le nom pour ignorer majuscules et espaces
     const normalized = name.trim().toLowerCase().replace(/\s+/g, ' ');
+    const matchId = prodId ? new mongoose.Types.ObjectId(prodId) : null;
     const product = await this.productModel.findOne({
       $expr: {
         $and: [
-          { $ne: ['$_id', prodId ? prodId : null] },
+          matchId ? { $ne: ['$_id', matchId] } : {},
           {
             $eq: [
               {
                 $replaceAll: {
-                  input: { $toLower: { $trim: { input: '$name' } } },
+                  input: { $replaceAll: { input: { $toLower: { $trim: { input: '$name' } } }, find: '  ', replacement: ' ' } },
                   find: '  ',
                   replacement: ' ',
                 },
@@ -221,6 +222,14 @@ export class ProductService {
         ];
     
         return this.productModel.aggregate(pipeline).exec();
+    }
+
+    async deleteProductById(productId: string): Promise<Product | null> {
+        const product = await this.productModel.findById(productId).exec();
+        if (!product) {
+            throw new NotFoundException('Product not found');
+        }
+        return await this.productModel.findByIdAndDelete(productId).exec();
     }
 
 }

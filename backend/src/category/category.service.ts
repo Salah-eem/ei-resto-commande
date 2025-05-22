@@ -53,12 +53,13 @@ export class CategoryService {
     async isNameUnique(name: string, catId?: string): Promise<boolean> {
       // Normalise le nom pour ignorer majuscules et espaces
       const normalized = name.trim().toLowerCase().replace(/\s+/g, ' ');
+      const matchId = catId ? new mongoose.Types.ObjectId(catId) : null;
       const category = await this.categoryModel.findOne({
         $expr: {
           $and: [
-            { $ne: ['$_id', catId ? catId : null] },
+            matchId ? { $ne: ['$_id', matchId] } : {},
             { $eq: [
-              { $replaceAll: { input: { $toLower: { $trim: { input: '$name' } } }, find: '  ', replacement: ' ' } },
+              { $replaceAll: { input: { $replaceAll: { input: { $toLower: { $trim: { input: '$name' } } }, find: '  ', replacement: ' ' } }, find: '  ', replacement: ' ' } },
               normalized
             ] }
           ]

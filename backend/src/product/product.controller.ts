@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -109,5 +110,11 @@ export class ProductController {
     }
     const imageUrl = `/images/products/${file.filename}`;
     return this.productService.updateProductImage(productId, imageUrl);
+  }
+
+  @Roles(Role.Admin)
+  @Delete(':productId')
+  async deleteProduct(@Param('productId') productId: string) {
+    return this.productService.deleteProductById(productId);
   }
 }

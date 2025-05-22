@@ -18,11 +18,14 @@ import { RootState } from '@/store/store';
 import { fetchIngredients, addIngredient, updateIngredient, deleteIngredient, updateIngredientImage } from '@/store/slices/ingredientSlice';
 import { Ingredient } from '@/types/ingredient';
 import { useAppDispatch, useAppSelector } from "@/store/slices/hooks";
+import { fetchCategories, addCategory, updateCategory, deleteCategory } from "@/store/slices/categorySlice";
+import { fetchProducts, addProduct, updateProduct, deleteProduct } from "@/store/slices/productSlice";
+import Snackbar from '@mui/material/Snackbar';
+import MuiAlert, { AlertColor } from '@mui/material/Alert';
+import Swal from 'sweetalert2';
 
 
 const MenuManager: React.FC = () => {
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState(0);
@@ -36,11 +39,21 @@ const MenuManager: React.FC = () => {
   const [prodDialogOpen, setProdDialogOpen] = useState(false);
   const [prodEdit, setProdEdit] = useState<Product | null>(null);
   const [prodData, setProdData] = useState<Partial<Product>>({ productType: ProductType.SINGLE_PRICE });
+    
+  const [ingredientDialogOpen, setIngredientDialogOpen] = useState(false);
+  const [ingredientEdit, setIngredientEdit] = useState<Ingredient | null>(null);
+
+  const [snackbar, setSnackbar] = useState<{ open: boolean, message: string, severity: AlertColor }>({ open: false, message: '', severity: 'success' });
+
+  // Helper to show snackbar
+  const showSnackbar = (message: string, severity: AlertColor = 'success') => {
+    setSnackbar({ open: true, message, severity });
+  };
 
   const dispatch = useAppDispatch();
   const { items: ingredients, loading: loadingIngredients, error: errorIngredients } = useAppSelector((state: RootState) => state.ingredients);
-  const [ingredientDialogOpen, setIngredientDialogOpen] = useState(false);
-  const [ingredientEdit, setIngredientEdit] = useState<Ingredient | null>(null);
+  const { items: categories, loading: loadingCategories, error: errorCategories } = useAppSelector((state: RootState) => state.categories);
+  const { items: products, loading: loadingProducts, error: errorProducts } = useAppSelector((state: RootState) => state.products);
 
   // Filter states
   const [categoryFilter, setCategoryFilter] = useState("");
@@ -170,77 +183,100 @@ const MenuManager: React.FC = () => {
     description: Yup.string().test('desc', 'Minimum 3 characters', val => !val || val.length === 0 || val.length >= 3),
   });
 
-  // Fetch categories and products
-  const fetchData = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [catRes, prodRes] = await Promise.all([
-        api.get("/category"),
-        api.get("/product"),
-      ]);
-      setCategories(catRes.data);
-      setProducts(prodRes.data);
-    } catch (e: any) {
-      setError(e?.response?.data?.message || "Error loading menu");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => { fetchData(); }, []);
   useEffect(() => { dispatch(fetchIngredients() as any); }, [dispatch]);
+  useEffect(() => { dispatch(fetchCategories() as any); }, [dispatch]);
+  useEffect(() => { dispatch(fetchProducts() as any); }, [dispatch]);
 
   // Category handlers
   const handleCatSave = async () => {
     try {
+      let actionResult;
+      const idxValue = catIdx === '' ? 1 : Number(catIdx);
       if (catEdit) {
-        await api.put(`/category/${catEdit._id}`, { name: catName, idx: catIdx });
+        actionResult = await dispatch(updateCategory({ id: catEdit._id, data: { name: catName, idx: idxValue } }) as any);
       } else {
-        await api.post("/category", { name: catName, idx: catIdx });
+        actionResult = await dispatch(addCategory({ name: catName, idx: idxValue }) as any);
+      }
+      if (!actionResult.error) {
+        dispatch(fetchCategories() as any);
+        showSnackbar(catEdit ? 'Category updated!' : 'Category added!', 'success');
       }
       setCatDialogOpen(false);
       setCatEdit(null);
       setCatName("");
       setCatIdx("");
-      fetchData();
     } catch (e: any) {
       setError(e?.response?.data?.message || "Error saving category");
+      showSnackbar(e?.response?.data?.message || "Error saving category", 'error');
     }
   };
   const handleCatDelete = async (cat: Category) => {
-    if (!window.confirm(`Delete category '${cat.name}'?`)) return;
+    const result = await Swal.fire({
+      title: `Delete category '${cat.name}'?`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Yes, delete',
+      cancelButtonText: 'Cancel',
+    });
+    if (!result.isConfirmed) return;
     try {
-      await api.delete(`/category/${cat._id}`);
-      fetchData();
+      const actionResult = await dispatch(deleteCategory(cat._id) as any);
+      if (!actionResult.error) {
+        dispatch(fetchCategories() as any);
+        showSnackbar('Category deleted!', 'success');
+      }
     } catch (e: any) {
       setError(e?.response?.data?.message || "Error deleting category");
+      showSnackbar(e?.response?.data?.message || "Error deleting category", 'error');
     }
   };
 
   // Product handlers
-  const handleProdSave = async () => {
+  const handleProdSave = async (values: any, { setSubmitting, setErrors }: any) => {
     try {
+      let payload: any = {
+        ...values,
+        category: typeof values.category === 'object' && values.category?._id ? values.category._id : values.category,
+      };
+      let actionResult;
       if (prodEdit) {
-        await api.put(`/product/${prodEdit._id}`, prodData);
+        actionResult = await dispatch(updateProduct({ id: prodEdit._id, data: payload }) as any);
       } else {
-        await api.post("/product", prodData);
+        actionResult = await dispatch(addProduct(payload) as any);
+      }
+      if (!actionResult.error) {
+        dispatch(fetchProducts() as any);
+        showSnackbar(prodEdit ? 'Product updated!' : 'Product added!', 'success');
       }
       setProdDialogOpen(false);
       setProdEdit(null);
-      setProdData({});
-      fetchData();
+      setProdData({ productType: ProductType.SINGLE_PRICE });
     } catch (e: any) {
+      setErrors && setErrors({ name: e?.response?.data?.message || "Error saving product" });
       setError(e?.response?.data?.message || "Error saving product");
+      showSnackbar(e?.response?.data?.message || "Error saving product", 'error');
+    } finally {
+      setSubmitting && setSubmitting(false);
     }
   };
   const handleProdDelete = async (prod: Product) => {
-    if (!window.confirm(`Delete product '${prod.name}'?`)) return;
+    const result = await Swal.fire({
+      title: `Delete product '${prod.name}'?`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Yes, delete',
+      cancelButtonText: 'Cancel',
+    });
+    if (!result.isConfirmed) return;
     try {
-      await api.delete(`/product/${prod._id}`);
-      fetchData();
+      const actionResult = await dispatch(deleteProduct(prod._id) as any);
+      if (!actionResult.error) {
+        dispatch(fetchProducts() as any);
+        showSnackbar('Product deleted!', 'success');
+      }
     } catch (e: any) {
       setError(e?.response?.data?.message || "Error deleting product");
+      showSnackbar(e?.response?.data?.message || "Error deleting product", 'error');
     }
   };
 
@@ -252,14 +288,14 @@ const MenuManager: React.FC = () => {
     reordered.splice(result.destination.index, 0, removed);
     // Recalcule les idx (1-based)
     const updated = reordered.map((cat, i) => ({ ...cat, idx: i + 1 }));
-    setCategories(updated);
-    // Envoie les nouveaux idx au backend via la route atomique
     try {
       await api.post('/category/reorder', { updates: updated.map(({ _id, idx }) => ({ _id, idx })) });
-      fetchData();
+      // Rafraîchir les catégories après le drag & drop pour refléter l'ordre côté backend
+      dispatch(fetchCategories() as any);
+      showSnackbar('Category order updated!', 'success');
     } catch (e: any) {
       setError(e?.response?.data?.message || "Error updating category order");
-      fetchData();
+      showSnackbar(e?.response?.data?.message || "Error updating category order", 'error');
     }
   };
 
@@ -281,7 +317,27 @@ const MenuManager: React.FC = () => {
     };
   }
 
-  if (loading) {
+  const handleIngredientDelete = async (ingredient: Ingredient) => {
+    const result = await Swal.fire({
+      title: `Delete ingredient '${ingredient.name}'?`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Yes, delete',
+      cancelButtonText: 'Cancel',
+    });
+    if (!result.isConfirmed) return;
+    try {
+      const actionResult = await dispatch(deleteIngredient(ingredient._id) as any);
+      if (!actionResult.error) {
+        dispatch(fetchIngredients() as any);
+        showSnackbar('Ingredient deleted!', 'success');
+      }
+    } catch (e: any) {
+      showSnackbar(e?.response?.data?.message || "Error deleting ingredient", 'error');
+    }
+  };
+
+  if (loadingProducts || loadingCategories || loadingIngredients) {
     return (
       <Box sx={{ maxWidth: 900, mx: "auto", py: 4 }}>
         <CircularProgress />
@@ -444,7 +500,7 @@ const MenuManager: React.FC = () => {
                   </Box>
                   <Box>
                     <IconButton onClick={() => { setIngredientEdit(ingredient); setIngredientDialogOpen(true); }}><EditIcon /></IconButton>
-                    <IconButton color="error" onClick={() => dispatch(deleteIngredient(ingredient._id) as any)}><DeleteIcon /></IconButton>
+                    <IconButton color="error" onClick={() => handleIngredientDelete(ingredient)}><DeleteIcon /></IconButton>
                   </Box>
                 </Paper>
               ))}
@@ -461,24 +517,7 @@ const MenuManager: React.FC = () => {
           validationSchema={categorySchema}
           validateOnBlur
           validateOnChange={false}
-          onSubmit={async (values, { setSubmitting, setErrors }) => {
-            try {
-              if (catEdit) {
-                await api.put(`/category/${catEdit._id}`, { name: values.name, idx: values.idx });
-              } else {
-                await api.post("/category", { name: values.name, idx: values.idx });
-              }
-              setCatDialogOpen(false);
-              setCatEdit(null);
-              setCatName("");
-              setCatIdx("");
-              fetchData();
-            } catch (e: any) {
-              setErrors({ name: e?.response?.data?.message || "Error saving category" });
-            } finally {
-              setSubmitting(false);
-            }
-          }}
+          onSubmit={handleCatSave}
         >
           {({ values, errors, touched, handleChange, handleBlur, isSubmitting, isValid, setFieldValue }) => (
             <Form>
@@ -530,33 +569,7 @@ const MenuManager: React.FC = () => {
           validationSchema={productSchema}
           validateOnBlur
           validateOnChange={false}
-          onSubmit={async (values, { setSubmitting, setErrors }) => {
-            try {
-              const payload = {
-                ...values,
-                category: typeof values.category === 'object' && values.category?._id ? values.category._id : values.category,
-              };
-              // Si stock est vide, on ne l'envoie pas du tout (stock illimité)
-              if (values.stock !== undefined && values.stock !== null && values.stock) {
-                payload.stock = values.stock;
-              } else {
-                delete payload.stock;
-              }
-              if (prodEdit) {
-                await api.put(`/product/${prodEdit._id}`, payload);
-              } else {
-                await api.post("/product", payload);
-              }
-              setProdDialogOpen(false);
-              setProdEdit(null);
-              setProdData({ productType: ProductType.SINGLE_PRICE });
-              fetchData();
-            } catch (e: any) {
-              setErrors({ name: e?.response?.data?.message || "Error saving product" });
-            } finally {
-              setSubmitting(false);
-            }
-          }}
+          onSubmit={handleProdSave}
         >
           {({ values, errors, touched, handleChange, handleBlur, setFieldValue, isSubmitting }) => (
             <Form>
@@ -859,6 +872,13 @@ const MenuManager: React.FC = () => {
           )}
         </Formik>
       </Dialog>
+
+      {/* Snackbar */}
+      <Snackbar open={snackbar.open} autoHideDuration={3000} onClose={() => setSnackbar({ ...snackbar, open: false })} anchorOrigin={{ vertical: 'top', horizontal: 'center' }}>
+        <MuiAlert elevation={6} variant="filled" onClose={() => setSnackbar({ ...snackbar, open: false })} severity={snackbar.severity} sx={{ width: '100%' }}>
+          {snackbar.message}
+        </MuiAlert>
+      </Snackbar>
     </Box>
   );
 };

@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Ingredient, IngredientDocument } from 'src/schemas/ingredient.schema';
 import { CreateUpdateIngredientDto } from './dto/create-update-ingredient.dto';
+import * as mongoose from 'mongoose';
 
 @Injectable()
 export class IngredientService {
@@ -66,12 +67,13 @@ export class IngredientService {
     async isNameUnique(name: string, ingredientId?: string): Promise<boolean> {
         // Normalise le nom pour ignorer majuscules et espaces
         const normalized = name.trim().toLowerCase().replace(/\s+/g, ' ');
+        const matchId = ingredientId ? new mongoose.Types.ObjectId(ingredientId) : null;
         const ingredient = await this.ingredientModel.findOne({
             $expr: {
                 $and: [
-                    { $ne: ['$_id', ingredientId ? ingredientId : null] },
+                    matchId ? { $ne: ['$_id', matchId] } : {},
                     { $eq: [
-                        { $replaceAll: { input: { $toLower: { $trim: { input: '$name' } } }, find: '  ', replacement: ' ' } },
+                        { $replaceAll: { input: { $replaceAll: { input: { $toLower: { $trim: { input: '$name' } } }, find: '  ', replacement: ' ' } }, find: '  ', replacement: ' ' } },
                         normalized
                     ] }
                 ]

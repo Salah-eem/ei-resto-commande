@@ -722,6 +722,7 @@ const TakeOrderPage: React.FC = () => {
                                         category: {
                                           _id: product.category._id,
                                           name: product.category.name,
+                                          idx: product.category.idx,
                                         },
                                         image_url: product.image_url,
                                       };
