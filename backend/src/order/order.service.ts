@@ -163,6 +163,11 @@ export class OrderService implements OnModuleInit {
     if (!order) throw new NotFoundException('Order not found');
     this.checkModificationAllowed(order, dto);
 
+    // Vérification disponibilité produits (avant modif)
+    if (dto.items && Array.isArray(dto.items)) {
+      await this.checkItemsAvailability(dto.items);
+    }
+
     // Empêcher l'écrasement des items si non précisé dans dto
     let updatedOrder: OrderDocument | null = null;
     // --- Gestion du stock : charger l'ancienne commande et ses items ---
@@ -427,6 +432,8 @@ export class OrderService implements OnModuleInit {
     const itemsSource = isEmployee
       ? (dto.items as any[]).map(i => this._mapItem(i))
       : (await this._getCartItems(dto.userId)).map(i => this._mapItem(i));
+    // Vérification disponibilité produits (avant création)
+    await this.checkItemsAvailability(itemsSource);
 
     // Si employé, la source est le nom de l'employé, sinon 'online'
     const source = isEmployee && userName ? userName : 'online';
@@ -484,6 +491,19 @@ export class OrderService implements OnModuleInit {
 
     this.liveOrdersGateway.sendUpdate();
     return updatedOrder;
+  }
+
+  private async checkItemsAvailability(items: any[]) {
+    for (const item of items) {
+      if (!item.productId) continue;
+      const product = await this.orderItemModel.db.collection('products').findOne({ _id: this.toObjectId(item.productId) });
+      if (!product) throw new BadRequestException(`Product not found: ${item.productId}`);
+      if (product.stock !== null && product.stock !== undefined) {
+        if (item.quantity > product.stock) {
+          throw new BadRequestException(`Not enough stock for product '${product.name}' (requested: ${item.quantity}, available: ${product.stock})`);
+        }
+      }
+    }
   }
 
   private async _getCartItems(userId: string) {
