@@ -101,6 +101,11 @@ const MenuManager: React.FC = () => {
       otherwise: s => s.notRequired(),
     }),
     category: Yup.mixed().test('not-null', 'Category is required', val => !!val),
+    stock: Yup.number()
+      .nullable()
+      .transform(value => (isNaN(value) ? null : value))
+      .positive('Stock must be a positive number')
+      .integer('Stock must be an integer'),
   });
 
   // Fetch categories and products
@@ -347,6 +352,12 @@ const MenuManager: React.FC = () => {
                 ...values,
                 category: typeof values.category === 'object' && values.category?._id ? values.category._id : values.category,
               };
+              // Si stock est vide, on ne l'envoie pas du tout (stock illimité)
+              if (values.stock !== undefined && values.stock !== null && values.stock) {
+                payload.stock = values.stock;
+              } else {
+                delete payload.stock;
+              }
               if (prodEdit) {
                 await api.put(`/product/${prodEdit._id}`, payload);
               } else {
@@ -486,6 +497,27 @@ const MenuManager: React.FC = () => {
                     <MenuItem key={cat._id} value={cat._id}>{cat.name}</MenuItem>
                   ))}
                 </TextField>
+                <TextField
+                  label="Stock (leave empty for unlimited)"
+                  name="stock"
+                  type="text"
+                  value={values.stock === undefined || values.stock === null ? 'unlimited' : values.stock}
+                  onChange={e => {
+                    let val = e.target.value;
+                    if (val === '' || val.toLowerCase() === 'unlimited') {
+                      setFieldValue('stock', undefined);
+                    } else {
+                      const num = Number(val);
+                      setFieldValue('stock', isNaN(num) ? undefined : num);
+                    }
+                  }}
+                  onBlur={handleBlur}
+                  error={touched.stock && Boolean(errors.stock)}
+                  helperText={touched.stock && errors.stock}
+                  fullWidth
+                  sx={{ mt: 2 }}
+                  inputProps={{ min: 0 }}
+                />
               </DialogContent>
               <DialogActions>
                 <Button onClick={() => setProdDialogOpen(false)} disabled={isSubmitting}>Cancel</Button>

@@ -46,6 +46,9 @@ export class ProductService {
     productId: string,
     updateData: CreateUpdateProductDto,
   ): Promise<Product> {
+    if (!updateData.stock) {
+      updateData.stock = null;
+    }
     const updatedProduct = await this.productModel
       .findByIdAndUpdate(productId, updateData, {
         new: true,

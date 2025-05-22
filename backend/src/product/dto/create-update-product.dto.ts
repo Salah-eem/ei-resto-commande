@@ -63,7 +63,7 @@ export class CreateUpdateProductDto {
 
   @IsOptional()
   @IsNumber()
-  readonly stock: number;
+  stock?: number | null;
 
   @IsOptional()
   @IsString()

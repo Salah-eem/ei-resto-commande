@@ -21,7 +21,7 @@ export class Product extends Document {
   @Prop()
   image_url: string;
 
-  @Prop({ required: false, default: 0 })
+  @Prop({ required: false, default: null })
   stock: number;
 
   @Prop({ required: true, enum: ProductType })
