@@ -111,12 +111,16 @@ const ProductList: React.FC = () => {
           py: 1,
         }}
       >
-        <CategoryNav categories={categories.filter(category => products.some(product => product.category._id === category._id))} onCategoryChange={handleCategoryChange} />
+        <CategoryNav categories={categories
+          .filter(category => products.some(product => product.category._id === category._id))
+          .sort((a, b) => a.idx - b.idx)
+        } onCategoryChange={handleCategoryChange} />
       </Box>
 
       {/* Section "Tous les produits" divisée par catégorie */}
       {categories
         .filter(category => products.some(product => product.category._id === category._id))
+        .sort((a, b) => a.idx - b.idx)
         .map((category) => {
           const productsInCategory = products.filter(
             (product) => product.category._id === category._id

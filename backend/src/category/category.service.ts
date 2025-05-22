@@ -11,7 +11,7 @@ export class CategoryService {
 
 
     async getAll(): Promise<Category[]> {
-        return await this.categoryModel.find().exec();
+        return (await this.categoryModel.find().exec()).sort((a, b) => a.idx - b.idx);
     }
 
     async findByName(name: string): Promise<Category | null> {
@@ -55,6 +55,34 @@ export class CategoryService {
         .findOne({ name, _id: { $ne: catId } })
         .exec();
       return !category;
+    }
+
+    async isIdxUnique(idx: number, catId?: string): Promise<boolean> {
+      const category = await this.categoryModel
+        .findOne({ idx, _id: { $ne: catId } })
+        .exec();
+      return !category;
+    }
+
+    async reorderCategories(updates: { _id: string, idx: number }[]) {
+        if (!Array.isArray(updates)) throw new BadRequestException('Invalid payload');
+        // Pour éviter les conflits d'unicité, on met d'abord tous les idx à des valeurs temporaires
+        const tempOps = updates.map((u, i) => ({
+            updateOne: {
+                filter: { _id: u._id },
+                update: { $set: { idx: 10000 + i } }
+            }
+        }));
+        await this.categoryModel.bulkWrite(tempOps);
+        // Puis on applique les vrais idx
+        const ops = updates.map(u => ({
+            updateOne: {
+                filter: { _id: u._id },
+                update: { $set: { idx: u.idx } }
+            }
+        }));
+        await this.categoryModel.bulkWrite(ops);
+        return { success: true };
     }
 
 }

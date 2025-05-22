@@ -36,6 +36,12 @@ export class CategoryController {
         return { unique: isUnique };
     }
 
+    @Post('check-idx-unique')
+    async checkIdx(@Body('idx') idx: number, @Body('catId') catId: string) {
+        const isUnique = await this.categoryService.isIdxUnique(idx, catId);
+        return { unique: isUnique };
+    }
+
     @Put(':id')
     async update(@Param('id') id: string, @Body() dto: CreateUpdateCategoryDto) {
         return await this.categoryService.update(id, dto);
@@ -49,6 +55,12 @@ export class CategoryController {
     @Delete()
     async deleteAll() {
         return await this.categoryService.deleteAll();
+    }
+
+    @Post('reorder')
+    async reorderCategories(@Body() body: { updates: { _id: string, idx: number }[] }) {
+        // Appelle le service pour faire le bulk update
+        return this.categoryService.reorderCategories(body.updates);
     }
 
 }

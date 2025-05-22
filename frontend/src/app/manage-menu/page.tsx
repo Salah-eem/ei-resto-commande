@@ -6,12 +6,14 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
+import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import api from "@/lib/api";
 import { Category } from "@/types/category";
 import { Product, ProductType } from "@/types/product";
 import { capitalizeFirstLetter } from "@/utils/functions.utils";
 import { Formik, Form, Field } from 'formik';
 import * as Yup from 'yup';
+import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 
 
 const MenuManager: React.FC = () => {
@@ -25,6 +27,7 @@ const MenuManager: React.FC = () => {
   const [catDialogOpen, setCatDialogOpen] = useState(false);
   const [catEdit, setCatEdit] = useState<Category | null>(null);
   const [catName, setCatName] = useState("");
+  const [catIdx, setCatIdx] = useState<number | ''>("");
 
   const [prodDialogOpen, setProdDialogOpen] = useState(false);
   const [prodEdit, setProdEdit] = useState<Product | null>(null);
@@ -46,6 +49,18 @@ const MenuManager: React.FC = () => {
     } 
   };
 
+  const validateCategoryIdx = async (idx: number, catId?: string) => {
+    try {
+      const res = await api.post(`/category/check-idx-unique`, {
+        idx,
+        catId,
+      });
+      return res.data.unique;
+    } catch {
+      return true;
+    } 
+  };
+
   const categorySchema = Yup.object().shape({
     name: Yup.string()
       .min(3, 'Minimum 3 characters')
@@ -54,6 +69,15 @@ const MenuManager: React.FC = () => {
         if (!value || value.length < 3) return true;
         const isUnique = await validateCategoryName(value, catEdit?._id);
         return isUnique;
+      }),
+    idx: Yup.number()
+      .typeError('Index must be a number')
+      .integer('Index must be an integer')
+      .min(1, 'Index must be greater than 0')
+      .required('Index is required')
+      .test('unique-idx', 'Index must be unique', function (value) {
+        if (!value) return true;
+        return validateCategoryIdx(value, catEdit?._id);
       }),
   });
 
@@ -132,13 +156,14 @@ const MenuManager: React.FC = () => {
   const handleCatSave = async () => {
     try {
       if (catEdit) {
-        await api.put(`/category/${catEdit._id}`, { name: catName });
+        await api.put(`/category/${catEdit._id}`, { name: catName, idx: catIdx });
       } else {
-        await api.post("/category", { name: catName });
+        await api.post("/category", { name: catName, idx: catIdx });
       }
       setCatDialogOpen(false);
       setCatEdit(null);
       setCatName("");
+      setCatIdx("");
       fetchData();
     } catch (e: any) {
       setError(e?.response?.data?.message || "Error saving category");
@@ -180,6 +205,25 @@ const MenuManager: React.FC = () => {
     }
   };
 
+  // Drag and drop handler for categories
+  const handleCategoryDragEnd = async (result: DropResult) => {
+    if (!result.destination) return;
+    const reordered = Array.from(categories);
+    const [removed] = reordered.splice(result.source.index, 1);
+    reordered.splice(result.destination.index, 0, removed);
+    // Recalcule les idx (1-based)
+    const updated = reordered.map((cat, i) => ({ ...cat, idx: i + 1 }));
+    setCategories(updated);
+    // Envoie les nouveaux idx au backend via la route atomique
+    try {
+      await api.post('/category/reorder', { updates: updated.map(({ _id, idx }) => ({ _id, idx })) });
+      fetchData();
+    } catch (e: any) {
+      setError(e?.response?.data?.message || "Error updating category order");
+      fetchData();
+    }
+  };
+
   if (loading) {
     return (
       <Box sx={{ maxWidth: 900, mx: "auto", py: 4 }}>
@@ -200,7 +244,13 @@ const MenuManager: React.FC = () => {
         {tab === 0 && (
           <Box>
             <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
-              <Button startIcon={<AddIcon />} variant="contained" onClick={() => { setCatEdit(null); setCatName(""); setCatDialogOpen(true); }}>Add Category</Button>
+              <Button startIcon={<AddIcon />} variant="contained" onClick={() => {
+                const maxIdx = categories.length > 0 ? Math.max(...categories.map(c => c.idx)) : 0;
+                setCatEdit(null);
+                setCatName("");
+                setCatIdx(maxIdx + 1);
+                setCatDialogOpen(true);
+              }}>Add Category</Button>
               <TextField
                 label="Filter categories"
                 value={categoryFilter}
@@ -210,24 +260,47 @@ const MenuManager: React.FC = () => {
               />
             </Box>
             {categories.length === 0 && <Typography>No categories.</Typography>}
-            {categories
-              .filter(cat => cat.name.toLowerCase().includes(categoryFilter.toLowerCase()))
-              .sort((a, b) => a.name.localeCompare(b.name))
-              .map(cat => {
-                const count = products.filter(p => (typeof p.category === 'string' ? p.category === cat._id : p.category?._id === cat._id)).length;
-                return (
-                  <Paper key={cat._id} sx={{ p: 2, mb: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Typography>{capitalizeFirstLetter(cat.name)}</Typography>
-                      <Typography variant="caption" color="text.secondary">({count})</Typography>
-                    </Box>
-                    <Box>
-                      <IconButton onClick={() => { setCatEdit(cat); setCatName(cat.name); setCatDialogOpen(true); }}><EditIcon /></IconButton>
-                      <IconButton color="error" onClick={() => handleCatDelete(cat)}><DeleteIcon /></IconButton>
-                    </Box>
-                  </Paper>
-                );
-              })}
+            <DragDropContext onDragEnd={handleCategoryDragEnd}>
+              <Droppable droppableId="categories-droppable">
+                {(provided) => (
+                  <div ref={provided.innerRef} {...provided.droppableProps}>
+                    {categories
+                      .filter(cat => cat.name.toLowerCase().includes(categoryFilter.toLowerCase()))
+                      .sort((a, b) => a.idx - b.idx)
+                      .map((cat, index) => {
+                        const count = products.filter(p => (typeof p.category === 'string' ? p.category === cat._id : p.category?._id === cat._id)).length;
+                        return (
+                          <Draggable key={cat._id} draggableId={cat._id} index={index}>
+                            {(provided, snapshot) => (
+                              <Paper
+                                ref={provided.innerRef}
+                                {...provided.draggableProps}
+                                {...provided.dragHandleProps}
+                                sx={{
+                                  p: 2, mb: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                  background: snapshot.isDragging ? '#e3f2fd' : undefined,
+                                }}
+                              >
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                  <DragIndicatorIcon sx={{ cursor: 'grab', color: '#90a4ae' }} />
+                                  <Typography>{capitalizeFirstLetter(cat.name)}</Typography>
+                                  <Typography variant="caption" color="text.secondary">({count})</Typography>
+                                  <Typography variant="caption" color="primary" sx={{ ml: 1 }}>Idx: {cat.idx}</Typography>
+                                </Box>
+                                <Box>
+                                  <IconButton onClick={() => { setCatEdit(cat); setCatName(cat.name); setCatIdx(cat.idx); setCatDialogOpen(true); }}><EditIcon /></IconButton>
+                                  <IconButton color="error" onClick={() => handleCatDelete(cat)}><DeleteIcon /></IconButton>
+                                </Box>
+                              </Paper>
+                            )}
+                          </Draggable>
+                        );
+                      })}
+                    {provided.placeholder}
+                  </div>
+                )}
+              </Droppable>
+            </DragDropContext>
           </Box>
         )}
         {tab === 1 && (
@@ -289,7 +362,7 @@ const MenuManager: React.FC = () => {
       <Dialog open={catDialogOpen} onClose={() => setCatDialogOpen(false)}>
         <DialogTitle>{catEdit ? "Edit Category" : "Add Category"}</DialogTitle>
         <Formik
-          initialValues={{ name: catName }}
+          initialValues={{ name: catName, idx: catEdit?.idx ?? catIdx }}
           enableReinitialize
           validationSchema={categorySchema}
           validateOnBlur
@@ -297,13 +370,14 @@ const MenuManager: React.FC = () => {
           onSubmit={async (values, { setSubmitting, setErrors }) => {
             try {
               if (catEdit) {
-                await api.put(`/category/${catEdit._id}`, { name: values.name });
+                await api.put(`/category/${catEdit._id}`, { name: values.name, idx: values.idx });
               } else {
-                await api.post("/category", { name: values.name });
+                await api.post("/category", { name: values.name, idx: values.idx });
               }
               setCatDialogOpen(false);
               setCatEdit(null);
               setCatName("");
+              setCatIdx("");
               fetchData();
             } catch (e: any) {
               setErrors({ name: e?.response?.data?.message || "Error saving category" });
@@ -312,7 +386,7 @@ const MenuManager: React.FC = () => {
             }
           }}
         >
-          {({ values, errors, touched, handleChange, handleBlur, isSubmitting, isValid }) => (
+          {({ values, errors, touched, handleChange, handleBlur, isSubmitting, isValid, setFieldValue }) => (
             <Form>
               <DialogContent>
                 <TextField
@@ -327,10 +401,26 @@ const MenuManager: React.FC = () => {
                   sx={{ mt: 1 }}
                   autoFocus
                 />
+                <TextField
+                  label="Index"
+                  name="idx"
+                  type="number"
+                  value={values.idx}
+                  onChange={e => {
+                    handleChange(e);
+                    setCatIdx(e.target.value === '' ? '' : Number(e.target.value));
+                  }}
+                  onBlur={handleBlur}
+                  error={touched.idx && Boolean(errors.idx)}
+                  helperText={touched.idx && errors.idx}
+                  fullWidth
+                  sx={{ mt: 2 }}
+                  inputProps={{ min: 1 }}
+                />
               </DialogContent>
               <DialogActions>
                 <Button onClick={() => setCatDialogOpen(false)} disabled={isSubmitting}>Cancel</Button>
-                <Button type="submit" variant="contained" disabled={isSubmitting || Boolean(errors.name) || !values.name || values.name.length < 3}>Save</Button>
+                <Button type="submit" variant="contained" disabled={isSubmitting || !isValid}>Save</Button>
               </DialogActions>
             </Form>
           )}
