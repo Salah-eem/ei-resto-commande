@@ -32,6 +32,24 @@ export class ProductController {
     return this.productService.getAll();
   }
 
+  @Public()
+  @Get('most-ordered')
+  async getMostOrderedProducts() {
+    return this.productService.getMostOrderedProducts();
+  }
+
+  @Public()
+  @Get('stats')
+  async getProductStats() {
+    return this.productService.getProductStats();
+  }
+
+  @Public()
+  @Get('ingredients/:productId')
+  async getProductIngredientsById(@Param('productId') productId: string) {
+    return this.productService.getProductIngredientsById(productId);
+  }
+
   @Roles(Role.Admin)
   @Post()
   async create(@Body() dto: CreateUpdateProductDto) {
@@ -91,15 +109,5 @@ export class ProductController {
     }
     const imageUrl = `/images/products/${file.filename}`;
     return this.productService.updateProductImage(productId, imageUrl);
-  }
-
-  @Get('most-ordered')
-  async getMostOrderedProducts() {
-    return this.productService.getMostOrderedProducts();
-  }
-
-  @Get('stats')
-  async getProductStats() {
-    return this.productService.getProductStats();
   }
 }

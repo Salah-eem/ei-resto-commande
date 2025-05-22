@@ -36,6 +36,9 @@ export class Product extends Document {
     default: null, // Utilisé seulement si `productType === MULTIPLE_SIZES`
   })
   sizes?: { name: string; price: number }[];
+
+  @Prop({ type: [{ type: Types.ObjectId, ref: 'Ingredient' }], default: [] })
+  ingredients: Types.ObjectId[];
 }
 
 export const ProductSchema = SchemaFactory.createForClass(Product);

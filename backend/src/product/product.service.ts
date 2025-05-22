@@ -175,4 +175,32 @@ export class ProductService {
     return OrderItem.aggregate(pipeline).exec();
   }
 
+    async getProductIngredientsById(productId: string): Promise<any[]> {
+        const pipeline = [
+        { $match: { _id: new mongoose.Types.ObjectId(productId) } },
+        {
+            $lookup: {
+            from: 'ingredients',
+            localField: 'ingredients',
+            foreignField: '_id',
+            as: 'ingredients',
+            },
+        },
+        { $unwind: '$ingredients' },
+        {
+            $project: {
+            _id: 0,
+            name: 1,
+            ingredients: {
+                _id: '$ingredients._id',
+                name: '$ingredients.name',
+                image_url: '$ingredients.image_url',
+            },
+            },
+        },
+        ];
+    
+        return this.productModel.aggregate(pipeline).exec();
+    }
+
 }

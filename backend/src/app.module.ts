@@ -14,6 +14,7 @@ import { DeliveryGateway } from './gateway/delivery.gateway';
 import { RestaurantModule } from './restaurant/restaurant.module';
 import { CommonModule } from './common/common.module';
 import { ScheduleModule } from '@nestjs/schedule';
+import { IngredientModule } from './ingredient/ingredient.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { ScheduleModule } from '@nestjs/schedule';
     AddressModule,
     RestaurantModule,
     CommonModule,
+    IngredientModule,
   ],
   controllers: [],
   providers: [DeliveryGateway,],
