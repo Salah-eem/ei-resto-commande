@@ -23,4 +23,7 @@ export class OrderItemDto {
 
   @IsOptional()
   image_url?: string;
+
+  @IsOptional()
+  liked?: boolean;
 }

@@ -124,4 +124,55 @@ export class ProductService {
     return OrderItem.aggregate(pipeline).exec();
   }
 
+  /**
+   * Retourne pour chaque produit :
+   * - totalOrders: nombre total de commandes contenant ce produit
+   * - totalLikes: nombre de fois où il a été liké
+   * - likePercentage: pourcentage de likes sur le total
+   */
+  async getProductStats(): Promise<any[]> {
+    const OrderItem = this.productModel.db.model('OrderItem');
+    const pipeline: any[] = [
+      {
+        $group: {
+          _id: "$productId",
+          totalOrders: { $sum: 1 },
+          totalLikes: { $sum: { $cond: ["$liked", 1, 0] } },
+        }
+      },
+      {
+        $lookup: {
+          from: "products",
+          localField: "_id",
+          foreignField: "_id",
+          as: "product"
+        }
+      },
+      { $unwind: "$product" },
+      {
+        $addFields: {
+          likePercentage: {
+            $cond: [
+              { $eq: ["$totalOrders", 0] },
+              0,
+              { $round: [{ $multiply: [{ $divide: ["$totalLikes", "$totalOrders"] }, 100] }, 1] }
+            ]
+          }
+        }
+      },
+      {
+        $project: {
+          _id: 0,
+          productId: "$product._id",
+          name: "$product.name",
+          image_url: "$product.image_url",
+          totalOrders: 1,
+          totalLikes: 1,
+          likePercentage: 1
+        }
+      }
+    ];
+    return OrderItem.aggregate(pipeline).exec();
+  }
+
 }

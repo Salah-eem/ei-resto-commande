@@ -2,7 +2,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Box, Typography, Grid, CircularProgress, Alert } from "@mui/material";
 import { useSelector, useDispatch } from "react-redux";
-import { fetchProducts } from "@/store/slices/productSlice";
+import { fetchProducts, fetchProductStats } from "@/store/slices/productSlice";
 import { fetchCategories } from "@/store/slices/categorySlice";
 import { RootState } from "@/store/store";
 import ProductCard from "./ProductCard";
@@ -19,6 +19,7 @@ const ProductList: React.FC = () => {
   const { items: categories, loading: loadingCategories, error: errorCategories } = useSelector(
     (state: RootState) => state.categories
   );
+  const { stats: productStats } = useSelector((state: RootState) => state.products);
 
   // Crée un objet ref pour chaque catégorie
   const categoryRefs = useRef<Record<string, HTMLDivElement | null>>({} as Record<string, HTMLDivElement | null>);
@@ -31,6 +32,7 @@ const ProductList: React.FC = () => {
     if (categories.length === 0) {
       dispatch(fetchCategories() as any);
     }
+    dispatch(fetchProductStats() as any);
   }, [dispatch, products.length, categories.length]);
 
   useEffect(() => {
@@ -96,7 +98,7 @@ const ProductList: React.FC = () => {
       >
         {featuredProducts.map((product) => (
           <Box key={product._id} sx={{ scrollSnapAlign: 'start', minHeight: 340 }}>
-            <ProductCard product={product} isHorizontal={false} />
+            <ProductCard product={product} isHorizontal={false} stats={productStats[product._id]} />
           </Box>
         ))}
       </Box>
@@ -138,7 +140,7 @@ const ProductList: React.FC = () => {
                 {productsInCategory.map((product) => (
                   <Grid item xs={12} sm={6} key={product._id}>
                     <Box sx={{ minHeight: 140 }}>
-                      <ProductCard product={product} isHorizontal={true} />
+                      <ProductCard product={product} isHorizontal={true} stats={productStats[product._id]} />
                     </Box>
                   </Grid>
                 ))}

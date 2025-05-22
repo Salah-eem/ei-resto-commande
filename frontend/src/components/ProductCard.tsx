@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { Card, CardContent, CardMedia, Typography, IconButton, Box } from '@mui/material';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
+import LikeIcon from '@mui/icons-material/ThumbUpAltOutlined';
 import { useDispatch, useSelector } from 'react-redux';
 import { addToCart } from '@/store/slices/cartSlice';
 import { Product, ProductType } from '@/types/product';
@@ -9,12 +10,20 @@ import SizeDialog from './SizeDialog';
 import { RootState } from '@/store/store';
 import { capitalizeFirstLetter } from '@/utils/functions.utils';
 
+interface ProductStats {
+  productId: string;
+  totalOrders: number;
+  totalLikes: number;
+  likePercentage: number;
+}
+
 interface ProductCardProps {
   product: Product;
   isHorizontal?: boolean;
+  stats?: ProductStats;
 }
 
-const ProductCard: React.FC<ProductCardProps> = ({ product, isHorizontal = false }) => {
+const ProductCard: React.FC<ProductCardProps> = ({ product, isHorizontal = false, stats }) => {
   const API_URL = process.env.NEXT_PUBLIC_API_URL!;
   const dispatch = useDispatch();
   const [openDialog, setOpenDialog] = useState(false);
@@ -147,6 +156,20 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isHorizontal = false
           >
             {product.description}
           </Typography>
+          {/* Statistiques commandes/likes */}
+          {stats && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <LikeIcon sx={{ fontSize: 'small', }} />
+                <Typography variant="caption" color="primary">
+                  {stats.likePercentage}%
+                </Typography>
+              </Box>
+              <Typography variant="caption" color="text.secondary">
+                ({stats.totalOrders})
+              </Typography>
+            </Box>
+          )}
         </Box>
       </CardContent>
       {product.productType === ProductType.MULTIPLE_SIZES && (

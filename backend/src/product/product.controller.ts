@@ -97,4 +97,9 @@ export class ProductController {
   async getMostOrderedProducts() {
     return this.productService.getMostOrderedProducts();
   }
+
+  @Get('stats')
+  async getProductStats() {
+    return this.productService.getProductStats();
+  }
 }

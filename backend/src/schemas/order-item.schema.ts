@@ -31,6 +31,9 @@ export class OrderItem {
 
   @Prop()
   image_url?: string;
+
+  @Prop({ default: false })
+  liked?: boolean; // Indique si le client a aimé ce produit dans la commande
 }
 
 export const OrderItemSchema = SchemaFactory.createForClass(OrderItem);

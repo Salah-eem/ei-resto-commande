@@ -151,4 +151,16 @@ export class OrderController {
     async deleteOrderByUser(@Param('userId') userId: string, @Param('orderId') orderId: string) {
       return this.orderService.deleteOrderByUser(userId, orderId);
     }
+
+    // PATCH /order/like-item
+    @Patch('like-item')
+    async likeOrderItem(@Body() body: { itemId: string, liked: boolean }) {
+      return this.orderService.likeOrderItem(body.itemId, body.liked);
+    }
+
+    // GET /order/item-liked/:itemId
+    @Get('item-liked/:itemId')
+    async getOrderItemLiked(@Param('itemId') itemId: string) {
+      return this.orderService.getOrderItemLiked(itemId);
+    }
 }

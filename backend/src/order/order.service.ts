@@ -138,8 +138,82 @@ export class OrderService implements OnModuleInit {
     return this._fetchOrdersWithCustomer(start, end);
   }
 
-  async getOrdersByUser(userId: string): Promise<Order[]> {
-    return this.orderModel.find({ userId }).sort('-createdAt').exec();
+  // Récupère toutes les commandes d’un utilisateur avec détails client & produits
+  async getOrdersByUser(userId: string): Promise<any[]> {
+    const allOrders = await this.orderModel
+      .find({ userId })
+      .sort('-createdAt')
+      .populate({
+        path: 'items',
+        model: 'OrderItem',
+        populate: {
+          path: 'productId',
+          model: 'Product',
+          select: 'name image_url productType basePrice sizes category',
+          populate: {
+            path: 'category',
+            model: 'Category',
+            select: 'name',
+          },
+        },
+      })
+      .lean();
+
+    // Séparer selon que userId soit un ObjectId valide
+    const isValidId = Types.ObjectId.isValid;
+    const withOid   = allOrders.filter(o => o.userId && isValidId(o.userId.toString()));
+    const populated  = await this.orderModel
+      .find({ _id: { $in: withOid.map(o => o._id) } })
+      .populate('userId', 'firstName phone')
+      .select('_id userId')
+      .lean();
+
+    const userMap = new Map<string, any>(
+      populated.map(o => [o._id.toString(), o.userId]),
+    );
+
+    return allOrders.map(order => {
+      const u = userMap.get(order._id.toString()) as any;
+      // Ajout des items enrichis
+      const items = (order.items as any[]).map(oi => {
+        const prod = oi.productId as any;
+        let computedPrice = oi.price;
+        if (prod.productType === 'multiple_sizes' && prod.sizes) {
+          const sizeMatch = prod.sizes.find((s: any) => s.name === oi.size);
+          if (sizeMatch) computedPrice = sizeMatch.price;
+        } else if (prod.productType === 'single_price' && prod.basePrice != null) {
+          computedPrice = prod.basePrice;
+        }
+        return {
+          _id: oi._id,
+          productId: prod._id,
+          name: prod.name,
+          price: computedPrice,
+          quantity: oi.quantity,
+          size: oi.size,
+          image_url: prod.image_url,
+          category: prod.category,
+          preparedQuantity: oi.preparedQuantity ?? 0,
+          isPrepared: oi.isPrepared ?? false,
+        };
+      });
+      return {
+        _id:             order._id,
+        source:          order.source,
+        totalAmount:     order.totalAmount,
+        orderStatus:     order.orderStatus,
+        paymentMethod:   order.paymentMethod,
+        paymentStatus:   order.paymentStatus,
+        orderType:       order.orderType,
+        createdAt:       order.createdAt,
+        deliveryAddress: order.deliveryAddress,
+        customer: {
+          name:  u?.firstName ?? order.customer?.name,
+          phone: u?.phone     ?? order.customer?.phone,
+        },
+        items,
+      };
+    });
   }
 
   async getOrderWithCustomer(id: string): Promise<any> {
@@ -861,5 +935,27 @@ export class OrderService implements OnModuleInit {
   stopPromoteScheduledCron() {
     const job = this.schedulerRegistry.getCronJob('promoteScheduledOrders');
     job.stop();
+  }
+
+  /**
+   * Like/unlike un OrderItem (produit dans une commande)
+   */
+  async likeOrderItem(itemId: string, liked: boolean) {
+    const item = await this.orderItemModel.findByIdAndUpdate(
+      itemId,
+      { liked },
+      { new: true }
+    );
+    if (!item) throw new NotFoundException('Order item not found');
+    return item;
+  }
+
+  /**
+   * Retourne l'état du bouton like pour un OrderItem donné
+   */
+  async getOrderItemLiked(itemId: string): Promise<{ liked: boolean }> {
+    const item = await this.orderItemModel.findById(itemId).select('liked').lean();
+    if (!item) throw new Error('OrderItem not found');
+    return { liked: !!item.liked };
   }
 }
