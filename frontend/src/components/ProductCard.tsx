@@ -7,6 +7,7 @@ import { addToCart } from '@/store/slices/cartSlice';
 import { Product, ProductType } from '@/types/product';
 import SizeDialog from './SizeDialog';
 import { RootState } from '@/store/store';
+import { capitalizeFirstLetter } from '@/utils/functions.utils';
 
 interface ProductCardProps {
   product: Product;
@@ -19,11 +20,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isHorizontal = false
   const [openDialog, setOpenDialog] = useState(false);
   const [selectedSize, setSelectedSize] = useState<string | undefined>(undefined);
   const userId = useSelector((state: RootState) => state.user.userId);  
-
-  // Fonction pour mettre en majuscule la première lettre de chaque mot
-  const toTitleCase = (str: string) =>
-    str.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.slice(1).toLowerCase());
-
+  const isOutOfStock = typeof product.stock === 'number' && product.stock <= 0;
   const handleClickOpen = () => setOpenDialog(true);
   const handleCloseDialog = () => setOpenDialog(false);
 
@@ -66,14 +63,21 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isHorizontal = false
         display: 'flex',
         flexDirection: isHorizontal ? 'row-reverse' : 'column',
         transition: 'transform 0.3s',
-        '&:hover': { transform: 'scale(1.03)' },
+        '&:hover': { transform: isOutOfStock ? undefined : 'scale(1.03)' },
+        opacity: isOutOfStock ? 0.5 : 1,
+        pointerEvents: isOutOfStock ? 'none' : 'auto',
+        filter: isOutOfStock ? 'grayscale(0.7)' : undefined,
       }}
     >
       <Box sx={{ position: 'relative', display: 'flex' }}>
         <CardMedia
           component="img"
-          image={product.image_url ? `${API_URL}/${product.image_url}` : '/placeholder.png'}
+          image={product.image_url ? `${API_URL}/${product.image_url}` : '/alt-pizza.jpg'}
           alt={product.name}
+          onError={e => {
+            const target = e.target as HTMLImageElement;
+            if (target.src !== '/alt-pizza.jpg') target.src = '/alt-pizza.jpg';
+          }}
           sx={{
             width: isHorizontal ? 150 : '100%',
             height: isHorizontal ? '100%' : 160,
@@ -81,6 +85,25 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isHorizontal = false
             objectFit: 'cover',
           }}
         />
+        {isOutOfStock && (
+          <Box sx={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            bgcolor: 'rgba(255,255,255,0.7)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderRadius: isHorizontal ? '10px 0 0 10px' : '10px 10px 0 0',
+            zIndex: 2,
+          }}>
+            <Typography variant="h6" sx={{ color: 'error.main' }} fontWeight={700}>
+              Victim of its own success
+            </Typography>
+          </Box>
+        )}
         <Box sx={{ position: 'absolute', bottom: 10, right: 10 }}>
           <IconButton color="primary"
             onClick={
@@ -105,7 +128,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isHorizontal = false
       >
         <Box>
           <Typography variant="h6" fontWeight="bold">
-            {toTitleCase(product.name)}
+            {capitalizeFirstLetter(product.name)}
           </Typography>
           <Typography variant="body2" sx={{ color: 'text.secondary' }}>
             {product.productType === ProductType.SINGLE_PRICE

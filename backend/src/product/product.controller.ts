@@ -92,4 +92,9 @@ export class ProductController {
     const imageUrl = `/images/products/${file.filename}`;
     return this.productService.updateProductImage(productId, imageUrl);
   }
+
+  @Get('most-ordered')
+  async getMostOrderedProducts() {
+    return this.productService.getMostOrderedProducts();
+  }
 }

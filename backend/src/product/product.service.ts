@@ -102,4 +102,26 @@ export class ProductService {
     return updatedProduct;
   }
 
+  async getMostOrderedProducts(): Promise<any[]> {
+    // Agrégation sur la collection OrderItem pour compter les quantités par produit
+    const OrderItem = this.productModel.db.model('OrderItem');
+    const pipeline: any[] = [
+      { $group: { _id: "$productId", totalOrdered: { $sum: "$quantity" } } },
+      { $sort: { totalOrdered: -1 } },
+      { $limit: 7 },
+      {
+        $lookup: {
+          from: "products",
+          localField: "_id",
+          foreignField: "_id",
+          as: "product"
+        }
+      },
+      { $unwind: "$product" },
+      { $addFields: { "product.totalOrdered": "$totalOrdered" } },
+      { $replaceRoot: { newRoot: "$product" } }
+    ];
+    return OrderItem.aggregate(pipeline).exec();
+  }
+
 }
