@@ -1,10 +1,12 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Put, UseGuards, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { IngredientService } from './ingredient.service';
 import { CreateUpdateIngredientDto } from './dto/create-update-ingredient.dto';
 import { JwtGuard } from 'src/auth/guard/jwt.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { Role } from 'src/schemas/user.schema';
-
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { extname } from 'path';
 
 @UseGuards(JwtGuard)
 @Roles(Role.Admin)
@@ -30,7 +32,9 @@ export class IngredientController {
     }
 
     @Post('add')
-    async addIngredient(@Body() ingredientData: CreateUpdateIngredientDto) {
+    @UseInterceptors(FileInterceptor('file'))
+    async addIngredient(@UploadedFile() file: Express.Multer.File, @Body() ingredientData: CreateUpdateIngredientDto) {
+        if (file) ingredientData.image_url = `/images/ingredients/${file.filename}`;
         return await this.ingredientService.addIngredient(ingredientData);
     }
 
@@ -41,7 +45,9 @@ export class IngredientController {
     }
 
     @Put('update/:id')
-    async updateIngredient(@Param('id') id: string, @Body() ingredientData: CreateUpdateIngredientDto) {
+    @UseInterceptors(FileInterceptor('file'))
+    async updateIngredient(@Param('id') id: string, @UploadedFile() file: Express.Multer.File, @Body() ingredientData: CreateUpdateIngredientDto) {
+        if (file) ingredientData.image_url = `/images/ingredients/${file.filename}`;
         return await this.ingredientService.updateIngredient(id, ingredientData);
     }
 
@@ -59,5 +65,36 @@ export class IngredientController {
     async deleteAllIngredients() {
         return await this.ingredientService.deleteAllIngredients();
     }
+
+    @Put('image/:ingredientId')
+      @UseInterceptors(
+        FileInterceptor('file', {
+          storage: diskStorage({
+            destination: './public/images/ingredients',
+            filename: (req, file, cb) => {
+              const uniqueSuffix =
+                Date.now() + '-' + Math.round(Math.random() * 1e9);
+              cb(null, uniqueSuffix + extname(file.originalname));
+            },
+          }),
+          fileFilter: (req, file, cb) => {
+            if (!file.mimetype.match(/\/(jpg|jpeg|png|gif)$/)) {
+              return cb(new Error('Only image files are allowed!'), false);
+            }
+            cb(null, true);
+          },
+          limits: { fileSize: 2 * 1024 * 1024 },
+        }),
+      )
+      async updateImage(
+        @UploadedFile() file: Express.Multer.File,
+        @Param('ingredientId') ingredientId: string,
+      ) {
+        if (!file) {
+          throw new Error('No file uploaded');
+        }
+        const imageUrl = `/images/ingredients/${file.filename}`;
+        return this.ingredientService.updateIngredientImage(ingredientId, imageUrl);
+      }
 
 }

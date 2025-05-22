@@ -79,9 +79,27 @@ export class ProductService {
   }
 
   async isNameUnique(name: string, prodId?: string): Promise<boolean> {
-    const product = await this.productModel
-      .findOne({ name, _id: { $ne: prodId } })
-      .exec();
+    // Normalise le nom pour ignorer majuscules et espaces
+    const normalized = name.trim().toLowerCase().replace(/\s+/g, ' ');
+    const product = await this.productModel.findOne({
+      $expr: {
+        $and: [
+          { $ne: ['$_id', prodId ? prodId : null] },
+          {
+            $eq: [
+              {
+                $replaceAll: {
+                  input: { $toLower: { $trim: { input: '$name' } } },
+                  find: '  ',
+                  replacement: ' ',
+                },
+              },
+              normalized,
+            ],
+          },
+        ],
+      },
+    }).exec();
     return !product;
   }
 
@@ -194,6 +212,8 @@ export class ProductService {
             ingredients: {
                 _id: '$ingredients._id',
                 name: '$ingredients.name',
+                stock: '$ingredients.stock',
+                description: '$ingredients.description',
                 image_url: '$ingredients.image_url',
             },
             },

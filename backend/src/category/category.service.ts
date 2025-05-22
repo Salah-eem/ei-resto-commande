@@ -51,9 +51,19 @@ export class CategoryService {
     }
 
     async isNameUnique(name: string, catId?: string): Promise<boolean> {
-      const category = await this.categoryModel
-        .findOne({ name, _id: { $ne: catId } })
-        .exec();
+      // Normalise le nom pour ignorer majuscules et espaces
+      const normalized = name.trim().toLowerCase().replace(/\s+/g, ' ');
+      const category = await this.categoryModel.findOne({
+        $expr: {
+          $and: [
+            { $ne: ['$_id', catId ? catId : null] },
+            { $eq: [
+              { $replaceAll: { input: { $toLower: { $trim: { input: '$name' } } }, find: '  ', replacement: ' ' } },
+              normalized
+            ] }
+          ]
+        }
+      }).exec();
       return !category;
     }
 

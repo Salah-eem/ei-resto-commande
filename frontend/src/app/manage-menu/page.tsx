@@ -14,6 +14,10 @@ import { capitalizeFirstLetter } from "@/utils/functions.utils";
 import { Formik, Form, Field } from 'formik';
 import * as Yup from 'yup';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
+import { RootState } from '@/store/store';
+import { fetchIngredients, addIngredient, updateIngredient, deleteIngredient, updateIngredientImage } from '@/store/slices/ingredientSlice';
+import { Ingredient } from '@/types/ingredient';
+import { useAppDispatch, useAppSelector } from "@/store/slices/hooks";
 
 
 const MenuManager: React.FC = () => {
@@ -33,9 +37,15 @@ const MenuManager: React.FC = () => {
   const [prodEdit, setProdEdit] = useState<Product | null>(null);
   const [prodData, setProdData] = useState<Partial<Product>>({ productType: ProductType.SINGLE_PRICE });
 
+  const dispatch = useAppDispatch();
+  const { items: ingredients, loading: loadingIngredients, error: errorIngredients } = useAppSelector((state: RootState) => state.ingredients);
+  const [ingredientDialogOpen, setIngredientDialogOpen] = useState(false);
+  const [ingredientEdit, setIngredientEdit] = useState<Ingredient | null>(null);
+
   // Filter states
   const [categoryFilter, setCategoryFilter] = useState("");
   const [productFilter, setProductFilter] = useState("");
+  const [ingredientFilter, setIngredientFilter] = useState("");
 
   const validateCategoryName = async (name: string, catId?: string) => {
     try {
@@ -132,6 +142,34 @@ const MenuManager: React.FC = () => {
       .integer('Stock must be an integer'),
   });
 
+  const validateIngredientName = async (name: string, ingredientId?: string) => {
+    try {
+      const res = await api.post(`/ingredient/check-name-unique`, {
+        name,
+        ingredientId,
+      });
+      return res.data.unique;
+    } catch {
+      return true;
+    }
+  };
+  
+  // Ingredient validation schema (const at top)
+  const ingredientSchema = Yup.object({
+    name: Yup.string().min(3, 'Minimum 3 characters').required('Required')
+      .test('unique', 'Ingredient name must be unique', async function (value) {
+        if (!value || value.length < 3) return true;
+        const isUnique = await validateIngredientName(value, ingredientEdit?._id);
+        return isUnique;
+      }),
+    stock: Yup.number()
+      .nullable()
+      .transform(value => (isNaN(value) ? null : value))
+      .positive('Stock must be a positive number')
+      .integer('Stock must be an integer'),
+    description: Yup.string().test('desc', 'Minimum 3 characters', val => !val || val.length === 0 || val.length >= 3),
+  });
+
   // Fetch categories and products
   const fetchData = async () => {
     setLoading(true);
@@ -151,6 +189,7 @@ const MenuManager: React.FC = () => {
   };
 
   useEffect(() => { fetchData(); }, []);
+  useEffect(() => { dispatch(fetchIngredients() as any); }, [dispatch]);
 
   // Category handlers
   const handleCatSave = async () => {
@@ -224,6 +263,24 @@ const MenuManager: React.FC = () => {
     }
   };
 
+  // Handler for ingredient form submit
+  const handleIngredientSubmit = async (values: any, { setSubmitting, setErrors }: any) => {
+    try {
+      const ingredient: Ingredient = { ...values };
+
+      if (ingredientEdit) {
+        await dispatch(updateIngredient({ id: ingredientEdit._id, data: ingredient }) as any);
+      } else {
+        await dispatch(addIngredient(ingredient) as any);
+      }
+      setIngredientDialogOpen(false);
+    } catch (e: any) {
+      setErrors({ name: e?.response?.data?.message || "Error saving ingredient" });
+    } finally {
+      setSubmitting(false);
+    };
+  }
+
   if (loading) {
     return (
       <Box sx={{ maxWidth: 900, mx: "auto", py: 4 }}>
@@ -240,6 +297,7 @@ const MenuManager: React.FC = () => {
         <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
           <Tab label="Categories" />
           <Tab label="Products" />
+          <Tab label="Ingredients" />
         </Tabs>
         {tab === 0 && (
           <Box>
@@ -354,6 +412,42 @@ const MenuManager: React.FC = () => {
                 </Box>
               );
             })}
+          </Box>
+        )}
+        {tab === 2 && (
+          <Box>
+            <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
+              <Button startIcon={<AddIcon />} variant="contained" onClick={() => { setIngredientEdit(null); setIngredientDialogOpen(true); }}>Add Ingredient</Button>
+              <TextField
+                label="Filter ingredients"
+                value={ingredientFilter}
+                onChange={e => setIngredientFilter(e.target.value)}
+                size="small"
+                sx={{ minWidth: 220 }}
+              />
+            </Box>
+            {loadingIngredients ? <CircularProgress /> : null}
+            {errorIngredients && <Alert severity="error">{errorIngredients}</Alert>}
+            {ingredients.length === 0 && <Typography>No ingredients.</Typography>}
+            {ingredients
+              .filter(i => i.name.toLowerCase().includes(ingredientFilter.toLowerCase()))
+              .sort((a, b) => a.name.localeCompare(b.name))
+              .map(ingredient => (
+                <Paper key={ingredient._id} sx={{ p: 2, mb: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    {ingredient.image_url && <img src={`${process.env.NEXT_PUBLIC_API_URL}${ingredient.image_url}`} alt={ingredient.name} style={{ width: 40, height: 40, borderRadius: 8, objectFit: 'cover' }} />}
+                    <Box>
+                      <Typography fontWeight={600}>{ingredient.name}</Typography>
+                      <Typography variant="body2" color="text.secondary">{ingredient.description}</Typography>
+                      <Typography variant="caption" color="text.secondary">Stock: {ingredient.stock === null ? 'unlimited' : ingredient.stock}</Typography>
+                    </Box>
+                  </Box>
+                  <Box>
+                    <IconButton onClick={() => { setIngredientEdit(ingredient); setIngredientDialogOpen(true); }}><EditIcon /></IconButton>
+                    <IconButton color="error" onClick={() => dispatch(deleteIngredient(ingredient._id) as any)}><DeleteIcon /></IconButton>
+                  </Box>
+                </Paper>
+              ))}
           </Box>
         )}
       </Paper>
@@ -645,6 +739,120 @@ const MenuManager: React.FC = () => {
               </DialogContent>
               <DialogActions>
                 <Button onClick={() => setProdDialogOpen(false)} disabled={isSubmitting}>Cancel</Button>
+                <Button type="submit" variant="contained" disabled={isSubmitting || Object.keys(errors).length > 0}>Save</Button>
+              </DialogActions>
+            </Form>
+          )}
+        </Formik>
+      </Dialog>
+
+      {/* Ingredient Dialog */}
+      <Dialog open={ingredientDialogOpen} onClose={() => setIngredientDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>{ingredientEdit ? "Edit Ingredient" : "Add Ingredient"}</DialogTitle>
+        <Formik
+          initialValues={{
+            _id: ingredientEdit?._id || "",
+            name: ingredientEdit?.name || "",
+            stock: ingredientEdit?.stock ?? null,
+            description: ingredientEdit?.description || "",
+            image_url: ingredientEdit?.image_url || "",
+            file: null,
+          }}
+          enableReinitialize
+          validationSchema={ingredientSchema}
+          validateOnBlur
+          validateOnChange={false}
+          onSubmit={handleIngredientSubmit}
+        >
+          {({ values, errors, touched, handleChange, handleBlur, setFieldValue, isSubmitting }) => (
+            <Form>
+              <DialogContent>
+                <TextField
+                  label="Ingredient Name"
+                  name="name"
+                  value={values.name}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  error={touched.name && Boolean(errors.name)}
+                  helperText={touched.name && errors.name}
+                  fullWidth
+                  sx={{ mt: 1 }}
+                  autoFocus
+                />
+                <TextField
+                  label="Stock (leave empty for unlimited)"
+                  name="stock"
+                  type="text"
+                  value={values.stock === null ? 'unlimited' : values.stock}
+                  onChange={e => {
+                    let val = e.target.value;
+                    if (val === '' || val.toLowerCase() === 'unlimited') {
+                      setFieldValue('stock', null);
+                    } else {
+                      const num = Number(val);
+                      setFieldValue('stock', isNaN(num) ? null : num);
+                    }
+                  }}
+                  onBlur={handleBlur}
+                  error={touched.stock && Boolean(errors.stock)}
+                  helperText={touched.stock && errors.stock}
+                  fullWidth
+                  sx={{ mt: 2 }}
+                  inputProps={{ min: 0 }}
+                />
+                <TextField
+                  label="Description"
+                  name="description"
+                  value={values.description || ""}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  error={touched.description && Boolean(errors.description)}
+                  helperText={touched.description && errors.description}
+                  fullWidth
+                  sx={{ mt: 2 }}
+                />
+
+                {/* Image upload */}
+                <Box sx={{ mt: 2, mb: 1 }}>
+                  <Button
+                    variant="outlined"
+                    component="label"
+                  >
+                    {values.image_url ? 'Change Image' : 'Upload Image'}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      hidden
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        const formData = new FormData();
+                        formData.append('file', file);
+                        try {
+                          const actionResult = await dispatch(updateIngredientImage({ id: values._id, formData }) as any);
+                          const payload = actionResult.payload;
+                          // payload est l'objet ingredient retourné par le backend (voir le slice)
+                          if (payload && payload.image_url) {
+                            setFieldValue('image_url', payload.image_url);
+                          } else {
+                            alert('Image upload succeeded but no image_url returned');
+                          }
+                        } catch (err) {
+                          alert('Image upload failed');
+                          console.error(err);
+                        }
+                      }}
+                    />
+                  </Button>
+                  {values.image_url && (
+                    <Box sx={{ mt: 1 }}>
+                      <img src={`${process.env.NEXT_PUBLIC_API_URL}/${values.image_url}`} alt="Product" style={{ maxWidth: 120, maxHeight: 120, borderRadius: 8 }} />
+                    </Box>
+                  )}
+                </Box>
+              </DialogContent>
+              <DialogActions>
+                <Button onClick={() => setIngredientDialogOpen(false)} disabled={isSubmitting}>Cancel</Button>
                 <Button type="submit" variant="contained" disabled={isSubmitting || Object.keys(errors).length > 0}>Save</Button>
               </DialogActions>
             </Form>

@@ -1,4 +1,5 @@
 import { Category } from "./category";
+import { Ingredient } from "./ingredient";
 
 export enum ProductType {
   SINGLE_PRICE = 'single_price', // Produits sans tailles (ex: Boissons, Desserts)
@@ -19,4 +20,5 @@ export interface Product {
 
   // Pour les produits avec tailles
   sizes?: { name: string; price: number }[];
+  ingredients: Ingredient[];
 }
