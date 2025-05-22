@@ -12,16 +12,16 @@ export class Product extends Document {
   @Prop({ required: true })
   name: string;
 
-  @Prop({ required: true })
+  @Prop({ required: false })
   description: string;
 
   @Prop({ type: Types.ObjectId, ref: 'Category', required: true })
-  category: Category; // Référence vers la catégorie
+  category: Types.ObjectId; // Référence vers la catégorie
 
   @Prop()
   image_url: string;
 
-  @Prop({ required: true })
+  @Prop({ required: false, default: 0 })
   stock: number;
 
   @Prop({ required: true, enum: ProductType })
