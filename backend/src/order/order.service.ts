@@ -159,87 +159,181 @@ export class OrderService implements OnModuleInit {
   }
 
   private async _update(id: string, dto: Partial<Order>): Promise<Order> {
+    const order = await this.orderModel.findById(id).populate('items').exec();
+    if (!order) throw new NotFoundException('Order not found');
+    this.checkModificationAllowed(order, dto);
+
     // Empêcher l'écrasement des items si non précisé dans dto
     let updatedOrder: OrderDocument | null = null;
+    // --- Gestion du stock : charger l'ancienne commande et ses items ---
+    const oldItems: any[] = order ? (order.items as any[]) : [];
+    let newItemsInput: any[] = [];
     if (dto.items === undefined) {
       const { items, ...rest } = dto;
       dto = rest;
     } else if (Array.isArray(dto.items)) {
-      // Séparer les items existants (avec _id objet ou string) des nouveaux (sans _id)
-      // On ne considère comme existant à mettre à jour que les objets ayant _id ET au moins une propriété modifiable
-      const isUpdatableObject = (item: any) =>
-        item && typeof item === 'object' && item._id && (
-          'quantity' in item || 'price' in item || 'size' in item || 'name' in item || 'image_url' in item || 'category' in item
-        );
-      const existingItems = dto.items.filter(isUpdatableObject);
-      const newItems = dto.items.filter((item: any) => !item || !item._id);
-      // Mettre à jour la quantité/prix/etc. des items existants
-      for (const item of existingItems) {
-        await this.orderItemModel.findByIdAndUpdate(item._id, {
-          $set: {
-            quantity: typeof item === 'object' && 'quantity' in item ? item.quantity : undefined,
-            price: typeof item === 'object' && 'price' in item ? item.price : undefined,
-            size: typeof item === 'object' && 'size' in item ? item.size : undefined,
-            name: (typeof item === 'object' && 'name' in item) ? item.name : undefined,
-            image_url: (typeof item === 'object' && 'image_url' in item) ? item.image_url : undefined,
-            category: typeof item === 'object' && 'category' in item ? item.category : undefined,
-          }
-        });
-      }
-      // On ne garde que les _id pour la référence dans la commande
-      const existingItemIds = existingItems.map((item: any) => item._id).concat(
-        dto.items.filter((item: any) => typeof item === 'string' || item instanceof Types.ObjectId)
-      );
-      // Créer les nouveaux items en base
-      if (newItems.length > 0) {
-        const created = await this.orderItemModel.insertMany(
-          newItems.map(i => ({ ...i, orderId: this.toObjectId(id), preparedQuantity: 0, isPrepared: false }))
-        );
-        dto.items = [...existingItemIds, ...created.map(i => i._id)];
-        // Si la commande était PREPARED, repasser à IN_PREPARATION
-        const currentOrder = await this.orderModel.findById(id).exec();
-        if (currentOrder && currentOrder.orderStatus === OrderStatus.PREPARED) {
-          dto.orderStatus = OrderStatus.IN_PREPARATION;
-        }
-      } else {
-        dto.items = existingItemIds;
-      }
+      newItemsInput = await this.updateOrderItems(dto, id);
     }
-    // Si scheduledFor est fourni, vérifier si on peut passer la commande à SCHEDULED
+    // --- Gestion du stock lors de la modification d'une commande ---
+    if (dto.items !== undefined) {
+      if (newItemsInput.length === 0 && dto.items) {
+        const ids = dto.items.map((id: any) => this.toObjectId(id));
+        newItemsInput = await this.orderItemModel.find({ _id: { $in: ids } }).lean();
+      }
+      await this.updateProductStocks(oldItems, newItemsInput);
+    }
+    // scheduledFor: logique inchangée
     if (dto.scheduledFor) {
-      // Charger la commande d'origine pour comparer les dates
       const orderWithItems = await this.orderModel.findById(id).populate('items').exec();
       if (!orderWithItems) throw new NotFoundException('Order not found for scheduled check');
-      const hasPrepared = (orderWithItems.items as any[]).some(item => item.isPrepared === true);
+      const hasPrepared = (orderWithItems.items as any[]).some(item => item.isPrepared === true || item.preparedQuantity > 0);
       const now = new Date();
       const scheduledDate = new Date(dto.scheduledFor);
-      // scheduledFor doit être dans le futur
       if (scheduledDate <= now) {
         throw new BadRequestException("The scheduled date must be in the future");
       }
-      // Si la commande a déjà été préparée ou si elle a des items préparés, on ne peut pas la programmer
       if (!orderWithItems.scheduledFor && hasPrepared) {
         throw new BadRequestException("Impossible to schedule an order that has already been prepared or has items prepared");
       }
-      // Vérification de la date : la nouvelle date doit être strictement postérieure à l'ancienne (si déjà programmée)
       else if (orderWithItems.scheduledFor && hasPrepared && scheduledDate > new Date(orderWithItems.scheduledFor)) {
-        // Interdit la modification, lève une erreur explicite
         throw new BadRequestException("Impossible to schedule an order that has already been prepared or has items prepared");
       } else {
         dto.orderStatus = OrderStatus.SCHEDULED;
       }
     }
-    // On met à jour la commande sans le totalAmount (sera recalculé juste après)
     updatedOrder = await this.orderModel
       .findByIdAndUpdate(id, dto, { new: true })
       .orFail(() => new NotFoundException('Order not found'));
+    await this.recomputeTotalAmount(id, dto);
+    this.liveOrdersGateway.sendUpdate();
+    const result = await this.orderModel.findById(id).populate('items').exec();
+    if (!result) {
+      throw new NotFoundException('Order not found');
+    }
+    return result;
+  }
 
-    // Recalcul du totalAmount à partir des items réels
+  private checkModificationAllowed(order: any, dto: Partial<Order>) {
+    if (!dto.items) return;
+    const oldItems = (order.items as any[]);
+    const newItems = dto.items;
+    // Map des items préparés dans l'ancienne commande (clé = _id ou productId)
+    const preparedMap = new Map<string, any>();
+    for (const item of oldItems) {
+      if ((item.isPrepared === true || item.preparedQuantity > 0) && item._id) {
+        preparedMap.set(String(item._id), item);
+      }
+    }
+    // Pour chaque item préparé, vérifier qu'il existe encore dans la nouvelle liste
+    for (const [id, oldItem] of preparedMap.entries()) {
+      const found = newItems.find((ni: any) => String(ni._id || ni) === id);
+      if (!found) {
+        throw new BadRequestException("You cannot remove an item that has already been prepared");
+      }
+    }
+  }
+
+  private computeItemsChanged(order: any, dto: Partial<Order>): boolean {
+    const oldItems = (order.items as any[]);
+    const oldIds = oldItems.map(i => String(i.productId));
+    const oldQtys = oldItems.map(i => i.quantity);
+    const newIds = dto.items!.map((i: any) => String(i.productId || i));
+    const newQtys = dto.items!.map((i: any) => i.quantity ?? null);
+    return oldIds.length !== newIds.length || oldIds.some((id, idx) => id !== newIds[idx]) || oldQtys.some((q, idx) => q !== newQtys[idx]);
+  }
+
+  private computeDateChanged(order: any, dto: Partial<Order>): boolean {
+    const oldDate = order.scheduledFor ? new Date(order.scheduledFor).getTime() : null;
+    const newDate = dto.scheduledFor ? new Date(dto.scheduledFor).getTime() : null;
+    return oldDate !== newDate;
+  }
+
+  private async updateOrderItems(dto: Partial<Order>, id: string): Promise<any[]> {
+    const isUpdatableObject = (item: any) =>
+      item && typeof item === 'object' && item._id && (
+        'quantity' in item || 'price' in item || 'size' in item || 'name' in item || 'image_url' in item || 'category' in item
+      );
+    const existingItems = dto.items!.filter(isUpdatableObject);
+    const newItems = dto.items!.filter((item: any) => !item || !item._id);
+    for (const item of existingItems) {
+      await this.orderItemModel.findByIdAndUpdate(item._id, {
+        $set: {
+          quantity: typeof item === 'object' && 'quantity' in item ? item.quantity : undefined,
+          price: typeof item === 'object' && 'price' in item ? item.price : undefined,
+          size: typeof item === 'object' && 'size' in item ? item.size : undefined,
+          name: (typeof item === 'object' && 'name' in item) ? item.name : undefined,
+          image_url: (typeof item === 'object' && 'image_url' in item) ? item.image_url : undefined,
+          category: typeof item === 'object' && 'category' in item ? item.category : undefined,
+        }
+      });
+    }
+    const existingItemIds = existingItems.map((item: any) => item._id).concat(
+      dto.items!.filter((item: any) => typeof item === 'string' || item instanceof Types.ObjectId)
+    );
+    let created: any[] = [];
+    if (newItems.length > 0) {
+      created = await this.orderItemModel.insertMany(
+        newItems.map(i => ({ ...i, orderId: this.toObjectId(id), preparedQuantity: 0, isPrepared: false }))
+      );
+      dto.items = [...existingItemIds, ...created.map(i => i._id)];
+      const currentOrder = await this.orderModel.findById(id).exec();
+      if (currentOrder && currentOrder.orderStatus === OrderStatus.PREPARED) {
+        dto.orderStatus = OrderStatus.IN_PREPARATION;
+      }
+    } else {
+      dto.items = existingItemIds;
+    }
+    return [
+      ...existingItems.map((item: any) => ({ ...item })),
+      ...created.map((item: any) => ({
+        ...item.toObject ? item.toObject() : item,
+        _id: item._id,
+        productId: item.productId,
+        quantity: item.quantity,
+      }))
+    ];
+  }
+
+  private async updateProductStocks(oldItems: any[], newItems: any[]) {
+    const oldMap = new Map<string, { quantity: number, _id: any }>();
+    for (const item of oldItems) {
+      if (item.productId) {
+        oldMap.set(String(item.productId), { quantity: item.quantity, _id: item._id });
+      }
+    }
+    const newMap = new Map<string, { quantity: number, _id: any }>();
+    for (const item of newItems) {
+      if (item.productId) {
+        newMap.set(String(item.productId), { quantity: item.quantity, _id: item._id });
+      }
+    }
+    const allProductIds = new Set([
+      ...Array.from(oldMap.keys()),
+      ...Array.from(newMap.keys()),
+    ]);
+    for (const productId of allProductIds) {
+      const oldQty = oldMap.get(productId)?.quantity ?? 0;
+      const newQty = newMap.get(productId)?.quantity ?? 0;
+      if (oldQty !== newQty) {
+        const product = await this.orderItemModel.db.collection('products').findOne({ _id: this.toObjectId(productId) });
+        if (product && product.stock !== null && product.stock !== undefined) {
+          const diff = newQty - oldQty;
+          if (diff !== 0) {
+            await this.orderItemModel.db.collection('products').updateOne(
+              { _id: this.toObjectId(productId) },
+              { $inc: { stock: -diff } }
+            );
+          }
+        }
+      }
+    }
+  }
+
+  private async recomputeTotalAmount(id: string, dto: Partial<Order>) {
     const populatedOrder = await this.orderModel.findById(id).populate('items').exec();
     if (!populatedOrder) throw new NotFoundException('Order not found after update');
     const items = (populatedOrder.items as any[]);
     let totalAmount = items.reduce((sum, i) => sum + (i.price * i.quantity), 0);
-    // Ajout ou retrait des frais de livraison selon le type de commande
     const orderType = dto.orderType ?? populatedOrder.orderType;
     if (orderType === OrderType.DELIVERY) {
       const restaurant = this.restaurantService.getRestaurant();
@@ -247,11 +341,8 @@ export class OrderService implements OnModuleInit {
         totalAmount += restaurant.deliveryFee;
       }
     }
-    // Mise à jour du totalAmount
-    updatedOrder = await this.orderModel.findByIdAndUpdate(id, { totalAmount }, { new: true })
+    await this.orderModel.findByIdAndUpdate(id, { totalAmount }, { new: true })
       .orFail(() => new NotFoundException('Order not found after total update'));
-    this.liveOrdersGateway.sendUpdate();
-    return updatedOrder;
   }
 
   async updatePosition(id: string, pos: { lat: number; lng: number }): Promise<Order> {
@@ -363,6 +454,19 @@ export class OrderService implements OnModuleInit {
     );
     const itemsIds = createdItems.map(i => this.toObjectId(i.id));
     const totalAmount = createdItems.reduce((s, i) => s + i.price * i.quantity, 0) + fee;
+    // --- Diminuer le stock des produits commandés (si stock limité) ---
+    for (const item of createdItems) {
+      if (item.productId) {
+        const product = await this.orderItemModel.db.collection('products').findOne({ _id: item.productId });
+        if (product && product.stock !== null && product.stock !== undefined) {
+          await this.orderItemModel.db.collection('products').updateOne(
+            { _id: item.productId },
+            { $inc: { stock: -item.quantity } }
+          );
+        }
+      }
+    }
+    // --- Fin gestion stock ---
     // Mise à jour fiable de la commande en base
     const updatedOrder = await this.orderModel.findByIdAndUpdate(
       order._id,
