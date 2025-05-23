@@ -1,14 +1,13 @@
 import { Body, Controller, Delete, Get, Param, Post, Put, UseGuards, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { IngredientService } from './ingredient.service';
 import { CreateUpdateIngredientDto } from './dto/create-update-ingredient.dto';
-import { JwtGuard } from 'src/auth/guard/jwt.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { Role } from 'src/schemas/user.schema';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
+import { Public } from 'src/common/decorators/public.decorator';
 
-@UseGuards(JwtGuard)
 @Roles(Role.Admin)
 @Controller('ingredient')
 export class IngredientController {
@@ -16,6 +15,7 @@ export class IngredientController {
     constructor(private readonly ingredientService: IngredientService) {}
 
 
+    @Public()
     @Get('all')
     async getAllIngredients() {
         return await this.ingredientService.getAll();

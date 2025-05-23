@@ -24,7 +24,7 @@ export class AuthService {
     try {
       const user = await this.userService.create(dto);
       const userId = (user as any)._id?.toString() || (user as any).id?.toString();
-      return this.signToken(userId, user.email, user.role.toString());
+      return this.signToken(userId, user.email, Number(user.role)); // <-- cast explicite en nombre
     } catch (error) {
       throw error;
     }
@@ -38,14 +38,14 @@ export class AuthService {
     if (!pwMatches)
       throw new ForbiddenException('Credentials incorrect');
     const userId = (user as any)._id?.toString() || (user as any).id?.toString();
-    return this.signToken(userId, user.email, user.role.toString());
+    return this.signToken(userId, user.email, Number(user.role)); // <-- cast explicite en nombre
   }
 
   /**
    * Génère un access token (valable 15m) et un refresh token (valable 7j)
    */
-  async signToken(userId: string, email: string, role: string): Promise<{ access_token: string, refresh_token: string }> {
-    const payload = { sub: userId, email, role };
+  async signToken(userId: string, email: string, role: number): Promise<{ access_token: string, refresh_token: string }> {
+    const payload = { sub: userId, email, role }; // <-- garder le rôle en nombre
     const secret = this.config.get('JWT_SECRET');
     
     const access_token = await this.jwt.signAsync(payload, {
@@ -77,7 +77,7 @@ export class AuthService {
       }
       // Génère et retourne de nouveaux tokens
       const userId = (user as any)._id?.toString() || (user as any).id?.toString();
-      return this.signToken(userId, user.email, user.role.toString());
+      return this.signToken(userId, user.email, Number(user.role));
     } catch (error) {
       throw new ForbiddenException('Invalid refresh token');
     }

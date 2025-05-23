@@ -22,7 +22,6 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 
-@UseGuards(JwtGuard)
 @Controller('product')
 export class ProductController {
   constructor(private productService: ProductService) {}
@@ -58,6 +57,7 @@ export class ProductController {
     return await this.productService.create(dto);
   }
 
+  @Roles(Role.Admin)
   @Post('check-name')
   async checkName(@Body('name') name: string, @Body('prodId') prodId: string) {
     name = name.trim().toLocaleLowerCase();
@@ -81,6 +81,7 @@ export class ProductController {
     return this.productService.updateAllProducts(updateData);
   }
 
+  @Roles(Role.Admin)
   @Put('image/:productId')
   @UseInterceptors(
     FileInterceptor('file', {

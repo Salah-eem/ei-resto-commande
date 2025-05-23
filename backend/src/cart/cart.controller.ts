@@ -1,10 +1,8 @@
-import { Controller, Post, Get, Body, Param, Patch, Delete, BadRequestException, UseGuards, Req, Request } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, Patch, Delete, BadRequestException, Req, Request } from '@nestjs/common';
 import { CartService } from './cart.service';
-import { JwtGuard } from 'src/auth/guard/jwt.guard';
 import { GetUser } from 'src/common/decorators/get-user.decorator';
 import { Public } from 'src/common/decorators/public.decorator';
 
-@UseGuards(JwtGuard)
 @Controller('cart')
 export class CartController {
   constructor(private readonly cartService: CartService) {}

@@ -104,7 +104,6 @@ export class AuthController {
     return tokens;
   }
 
-  @UseGuards(JwtGuard)
   @Get('me')
   getProfile(@GetUser() user: any) {
     return {

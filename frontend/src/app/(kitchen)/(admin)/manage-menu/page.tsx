@@ -23,6 +23,8 @@ import { fetchProducts, addProduct, updateProduct, deleteProduct } from "@/store
 import Snackbar from '@mui/material/Snackbar';
 import MuiAlert, { AlertColor } from '@mui/material/Alert';
 import Swal from 'sweetalert2';
+import ProtectRoute from "@/components/ProtectRoute";
+import { Role } from "@/types/user";
 
 
 const MenuManager: React.FC = () => {
@@ -346,540 +348,542 @@ const MenuManager: React.FC = () => {
   }
 
   return (
-    <Box sx={{ maxWidth: 900, mx: "auto", py: 4 }}>
-      <Typography variant="h4" fontWeight={700} mb={3}>Menu Management</Typography>
-      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-      <Paper sx={{ p: 3, borderRadius: 3 }}>
-        <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
-          <Tab label="Categories" />
-          <Tab label="Products" />
-          <Tab label="Ingredients" />
-        </Tabs>
-        {tab === 0 && (
-          <Box>
-            <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
-              <Button startIcon={<AddIcon />} variant="contained" onClick={() => {
-                const maxIdx = categories.length > 0 ? Math.max(...categories.map(c => c.idx)) : 0;
-                setCatEdit(null);
-                setCatName("");
-                setCatIdx(maxIdx + 1);
-                setCatDialogOpen(true);
-              }}>Add Category</Button>
-              <TextField
-                label="Filter categories"
-                value={categoryFilter}
-                onChange={e => setCategoryFilter(e.target.value)}
-                size="small"
-                sx={{ minWidth: 220 }}
-              />
-            </Box>
-            {categories.length === 0 && <Typography>No categories.</Typography>}
-            <DragDropContext onDragEnd={handleCategoryDragEnd}>
-              <Droppable droppableId="categories-droppable">
-                {(provided) => (
-                  <div ref={provided.innerRef} {...provided.droppableProps}>
-                    {categories
-                      .filter(cat => cat.name.toLowerCase().includes(categoryFilter.toLowerCase()))
-                      .sort((a, b) => a.idx - b.idx)
-                      .map((cat, index) => {
-                        const count = products.filter(p => (typeof p.category === 'string' ? p.category === cat._id : p.category?._id === cat._id)).length;
-                        return (
-                          <Draggable key={cat._id} draggableId={cat._id} index={index}>
-                            {(provided, snapshot) => (
-                              <Paper
-                                ref={provided.innerRef}
-                                {...provided.draggableProps}
-                                {...provided.dragHandleProps}
-                                sx={{
-                                  p: 2, mb: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                  background: snapshot.isDragging ? '#e3f2fd' : undefined,
-                                }}
-                              >
-                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                  <DragIndicatorIcon sx={{ cursor: 'grab', color: '#90a4ae' }} />
-                                  <Typography>{capitalizeFirstLetter(cat.name)}</Typography>
-                                  <Typography variant="caption" color="text.secondary">({count})</Typography>
-                                  <Typography variant="caption" color="primary" sx={{ ml: 1 }}>Idx: {cat.idx}</Typography>
-                                </Box>
-                                <Box>
-                                  <IconButton onClick={() => { setCatEdit(cat); setCatName(cat.name); setCatIdx(cat.idx); setCatDialogOpen(true); }}><EditIcon /></IconButton>
-                                  <IconButton color="error" onClick={() => handleCatDelete(cat)}><DeleteIcon /></IconButton>
-                                </Box>
-                              </Paper>
-                            )}
-                          </Draggable>
-                        );
-                      })}
-                    {provided.placeholder}
-                  </div>
-                )}
-              </Droppable>
-            </DragDropContext>
-          </Box>
-        )}
-        {tab === 1 && (
-          <Box>
-            <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
-              <Button startIcon={<AddIcon />} variant="contained" onClick={() => { setProdEdit(null); setProdData({}); setProdDialogOpen(true); }}>Add Product</Button>
-              <TextField
-                label="Filter products"
-                value={productFilter}
-                onChange={e => setProductFilter(e.target.value)}
-                size="small"
-                sx={{ minWidth: 220 }}
-              />
-            </Box>
-            {products.length === 0 && <Typography>No products.</Typography>}
-            {[...categories].sort((a, b) => a.name.localeCompare(b.name)).map(cat => {
-              const prods = products
-                .filter(p => (typeof p.category === 'string' ? p.category === cat._id : p.category?._id === cat._id))
-                .filter(p =>
-                  p.name.toLowerCase().includes(productFilter.toLowerCase()) ||
-                  (p.description && p.description.toLowerCase().includes(productFilter.toLowerCase()))
-                )
-                .sort((a, b) => a.name.localeCompare(b.name));
-              if (prods.length === 0) return null;
-              return (
-                <Box key={cat._id} sx={{ mb: 3 }}>
-                  <Typography variant="h6" fontWeight={600} sx={{ mb: 1 }}>{capitalizeFirstLetter(cat.name)}</Typography>
-                  {prods.map(prod => (
-                    <Paper key={prod._id} sx={{ p: 2, mb: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <Box>
-                        <Typography fontWeight={600}>{capitalizeFirstLetter(prod.name)}</Typography>
-                        <Typography variant="body2" color="text.secondary">{prod.description}</Typography>
-                        {prod.productType === ProductType.SINGLE_PRICE && (
-                          <Typography variant="body2">{prod.basePrice} €</Typography>
-                        )}
-                        {prod.productType === ProductType.MULTIPLE_SIZES && prod.sizes && (
-                          <Box>
-                            {prod.sizes.map((size, idx) => (
-                              <Typography key={idx} variant="body2">{capitalizeFirstLetter(size.name)}: {size.price} €</Typography>
-                            ))}
-                          </Box>
-                        )}
-                        <Typography variant="caption" color="text.secondary">{capitalizeFirstLetter(prod.category?.name)}</Typography>
-                      </Box>
-                      <Box>
-                        <IconButton onClick={() => { setProdEdit(prod); setProdData({ ...prod }); setProdDialogOpen(true); }}><EditIcon /></IconButton>
-                        <IconButton color="error" onClick={() => handleProdDelete(prod)}><DeleteIcon /></IconButton>
-                      </Box>
-                    </Paper>
-                  ))}
-                </Box>
-              );
-            })}
-          </Box>
-        )}
-        {tab === 2 && (
-          <Box>
-            <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
-              <Button startIcon={<AddIcon />} variant="contained" onClick={() => { setIngredientEdit(null); setIngredientDialogOpen(true); }}>Add Ingredient</Button>
-              <TextField
-                label="Filter ingredients"
-                value={ingredientFilter}
-                onChange={e => setIngredientFilter(e.target.value)}
-                size="small"
-                sx={{ minWidth: 220 }}
-              />
-            </Box>
-            {loadingIngredients ? <CircularProgress /> : null}
-            {errorIngredients && <Alert severity="error">{errorIngredients}</Alert>}
-            {ingredients.length === 0 && <Typography>No ingredients.</Typography>}
-            {ingredients
-              .filter(i => i.name.toLowerCase().includes(ingredientFilter.toLowerCase()))
-              .sort((a, b) => a.name.localeCompare(b.name))
-              .map(ingredient => (
-                <Paper key={ingredient._id} sx={{ p: 2, mb: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                    {ingredient.image_url && <img src={`${process.env.NEXT_PUBLIC_API_URL}${ingredient.image_url}`} alt={ingredient.name} style={{ width: 40, height: 40, borderRadius: 8, objectFit: 'cover' }} />}
-                    <Box>
-                      <Typography fontWeight={600}>{ingredient.name}</Typography>
-                      <Typography variant="body2" color="text.secondary">{ingredient.description}</Typography>
-                      <Typography variant="caption" color="text.secondary">Stock: {ingredient.stock === null ? 'unlimited' : ingredient.stock}</Typography>
-                    </Box>
-                  </Box>
-                  <Box>
-                    <IconButton onClick={() => { setIngredientEdit(ingredient); setIngredientDialogOpen(true); }}><EditIcon /></IconButton>
-                    <IconButton color="error" onClick={() => handleIngredientDelete(ingredient)}><DeleteIcon /></IconButton>
-                  </Box>
-                </Paper>
-              ))}
-          </Box>
-        )}
-      </Paper>
-
-      {/* Category Dialog */}
-      <Dialog open={catDialogOpen} onClose={() => setCatDialogOpen(false)}>
-        <DialogTitle>{catEdit ? "Edit Category" : "Add Category"}</DialogTitle>
-        <Formik
-          initialValues={{ name: catName, idx: catEdit?.idx ?? catIdx }}
-          enableReinitialize
-          validationSchema={categorySchema}
-          validateOnBlur
-          validateOnChange={false}
-          onSubmit={handleCatSave}
-        >
-          {({ values, errors, touched, handleChange, handleBlur, isSubmitting, isValid, setFieldValue }) => (
-            <Form>
-              <DialogContent>
+    <ProtectRoute allowedRoles={[Role.Admin]}>
+      <Box sx={{ maxWidth: 900, mx: "auto", py: 4 }}>
+        <Typography variant="h4" fontWeight={700} mb={3}>Menu Management</Typography>
+        {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+        <Paper sx={{ p: 3, borderRadius: 3 }}>
+          <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
+            <Tab label="Categories" />
+            <Tab label="Products" />
+            <Tab label="Ingredients" />
+          </Tabs>
+          {tab === 0 && (
+            <Box>
+              <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
+                <Button startIcon={<AddIcon />} variant="contained" onClick={() => {
+                  const maxIdx = categories.length > 0 ? Math.max(...categories.map(c => c.idx)) : 0;
+                  setCatEdit(null);
+                  setCatName("");
+                  setCatIdx(maxIdx + 1);
+                  setCatDialogOpen(true);
+                }}>Add Category</Button>
                 <TextField
-                  label="Category Name"
-                  name="name"
-                  value={values.name}
-                  onChange={e => { handleChange(e); setCatName(e.target.value); }}
-                  onBlur={handleBlur}
-                  error={touched.name && Boolean(errors.name)}
-                  helperText={touched.name && errors.name}
-                  fullWidth
-                  sx={{ mt: 1 }}
-                  autoFocus
+                  label="Filter categories"
+                  value={categoryFilter}
+                  onChange={e => setCategoryFilter(e.target.value)}
+                  size="small"
+                  sx={{ minWidth: 220 }}
                 />
-                <TextField
-                  label="Index"
-                  name="idx"
-                  type="number"
-                  value={values.idx}
-                  onChange={e => {
-                    handleChange(e);
-                    setCatIdx(e.target.value === '' ? '' : Number(e.target.value));
-                  }}
-                  onBlur={handleBlur}
-                  error={touched.idx && Boolean(errors.idx)}
-                  helperText={touched.idx && errors.idx}
-                  fullWidth
-                  sx={{ mt: 2 }}
-                  inputProps={{ min: 1 }}
-                />
-              </DialogContent>
-              <DialogActions>
-                <Button onClick={() => setCatDialogOpen(false)} disabled={isSubmitting}>Cancel</Button>
-                <Button type="submit" variant="contained" disabled={isSubmitting || !isValid}>Save</Button>
-              </DialogActions>
-            </Form>
+              </Box>
+              {categories.length === 0 && <Typography>No categories.</Typography>}
+              <DragDropContext onDragEnd={handleCategoryDragEnd}>
+                <Droppable droppableId="categories-droppable">
+                  {(provided) => (
+                    <div ref={provided.innerRef} {...provided.droppableProps}>
+                      {categories
+                        .filter(cat => cat.name.toLowerCase().includes(categoryFilter.toLowerCase()))
+                        .sort((a, b) => a.idx - b.idx)
+                        .map((cat, index) => {
+                          const count = products.filter(p => (typeof p.category === 'string' ? p.category === cat._id : p.category?._id === cat._id)).length;
+                          return (
+                            <Draggable key={cat._id} draggableId={cat._id} index={index}>
+                              {(provided, snapshot) => (
+                                <Paper
+                                  ref={provided.innerRef}
+                                  {...provided.draggableProps}
+                                  {...provided.dragHandleProps}
+                                  sx={{
+                                    p: 2, mb: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                    background: snapshot.isDragging ? '#e3f2fd' : undefined,
+                                  }}
+                                >
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                    <DragIndicatorIcon sx={{ cursor: 'grab', color: '#90a4ae' }} />
+                                    <Typography>{capitalizeFirstLetter(cat.name)}</Typography>
+                                    <Typography variant="caption" color="text.secondary">({count})</Typography>
+                                    <Typography variant="caption" color="primary" sx={{ ml: 1 }}>Idx: {cat.idx}</Typography>
+                                  </Box>
+                                  <Box>
+                                    <IconButton onClick={() => { setCatEdit(cat); setCatName(cat.name); setCatIdx(cat.idx); setCatDialogOpen(true); }}><EditIcon /></IconButton>
+                                    <IconButton color="error" onClick={() => handleCatDelete(cat)}><DeleteIcon /></IconButton>
+                                  </Box>
+                                </Paper>
+                              )}
+                            </Draggable>
+                          );
+                        })}
+                      {provided.placeholder}
+                    </div>
+                  )}
+                </Droppable>
+              </DragDropContext>
+            </Box>
           )}
-        </Formik>
-      </Dialog>
+          {tab === 1 && (
+            <Box>
+              <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
+                <Button startIcon={<AddIcon />} variant="contained" onClick={() => { setProdEdit(null); setProdData({}); setProdDialogOpen(true); }}>Add Product</Button>
+                <TextField
+                  label="Filter products"
+                  value={productFilter}
+                  onChange={e => setProductFilter(e.target.value)}
+                  size="small"
+                  sx={{ minWidth: 220 }}
+                />
+              </Box>
+              {products.length === 0 && <Typography>No products.</Typography>}
+              {[...categories].sort((a, b) => a.name.localeCompare(b.name)).map(cat => {
+                const prods = products
+                  .filter(p => (typeof p.category === 'string' ? p.category === cat._id : p.category?._id === cat._id))
+                  .filter(p =>
+                    p.name.toLowerCase().includes(productFilter.toLowerCase()) ||
+                    (p.description && p.description.toLowerCase().includes(productFilter.toLowerCase()))
+                  )
+                  .sort((a, b) => a.name.localeCompare(b.name));
+                if (prods.length === 0) return null;
+                return (
+                  <Box key={cat._id} sx={{ mb: 3 }}>
+                    <Typography variant="h6" fontWeight={600} sx={{ mb: 1 }}>{capitalizeFirstLetter(cat.name)}</Typography>
+                    {prods.map(prod => (
+                      <Paper key={prod._id} sx={{ p: 2, mb: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <Box>
+                          <Typography fontWeight={600}>{capitalizeFirstLetter(prod.name)}</Typography>
+                          <Typography variant="body2" color="text.secondary">{prod.description}</Typography>
+                          {prod.productType === ProductType.SINGLE_PRICE && (
+                            <Typography variant="body2">{prod.basePrice} €</Typography>
+                          )}
+                          {prod.productType === ProductType.MULTIPLE_SIZES && prod.sizes && (
+                            <Box>
+                              {prod.sizes.map((size, idx) => (
+                                <Typography key={idx} variant="body2">{capitalizeFirstLetter(size.name)}: {size.price} €</Typography>
+                              ))}
+                            </Box>
+                          )}
+                          <Typography variant="caption" color="text.secondary">{capitalizeFirstLetter(prod.category?.name)}</Typography>
+                        </Box>
+                        <Box>
+                          <IconButton onClick={() => { setProdEdit(prod); setProdData({ ...prod }); setProdDialogOpen(true); }}><EditIcon /></IconButton>
+                          <IconButton color="error" onClick={() => handleProdDelete(prod)}><DeleteIcon /></IconButton>
+                        </Box>
+                      </Paper>
+                    ))}
+                  </Box>
+                );
+              })}
+            </Box>
+          )}
+          {tab === 2 && (
+            <Box>
+              <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
+                <Button startIcon={<AddIcon />} variant="contained" onClick={() => { setIngredientEdit(null); setIngredientDialogOpen(true); }}>Add Ingredient</Button>
+                <TextField
+                  label="Filter ingredients"
+                  value={ingredientFilter}
+                  onChange={e => setIngredientFilter(e.target.value)}
+                  size="small"
+                  sx={{ minWidth: 220 }}
+                />
+              </Box>
+              {loadingIngredients ? <CircularProgress /> : null}
+              {errorIngredients && <Alert severity="error">{errorIngredients}</Alert>}
+              {ingredients.length === 0 && <Typography>No ingredients.</Typography>}
+              {ingredients
+                .filter(i => i.name.toLowerCase().includes(ingredientFilter.toLowerCase()))
+                .sort((a, b) => a.name.localeCompare(b.name))
+                .map(ingredient => (
+                  <Paper key={ingredient._id} sx={{ p: 2, mb: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                      {ingredient.image_url && <img src={`${process.env.NEXT_PUBLIC_API_URL}${ingredient.image_url}`} alt={ingredient.name} style={{ width: 40, height: 40, borderRadius: 8, objectFit: 'cover' }} />}
+                      <Box>
+                        <Typography fontWeight={600}>{ingredient.name}</Typography>
+                        <Typography variant="body2" color="text.secondary">{ingredient.description}</Typography>
+                        <Typography variant="caption" color="text.secondary">Stock: {ingredient.stock === null ? 'unlimited' : ingredient.stock}</Typography>
+                      </Box>
+                    </Box>
+                    <Box>
+                      <IconButton onClick={() => { setIngredientEdit(ingredient); setIngredientDialogOpen(true); }}><EditIcon /></IconButton>
+                      <IconButton color="error" onClick={() => handleIngredientDelete(ingredient)}><DeleteIcon /></IconButton>
+                    </Box>
+                  </Paper>
+                ))}
+            </Box>
+          )}
+        </Paper>
 
-      {/* Product Dialog */}
-      <Dialog open={prodDialogOpen} onClose={() => setProdDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>{prodEdit ? "Edit Product" : "Add Product"}</DialogTitle>
-        <Formik
-          initialValues={prodData}
-          enableReinitialize
-          validationSchema={productSchema}
-          validateOnBlur
-          validateOnChange={false}
-          onSubmit={handleProdSave}
-        >
-          {({ values, errors, touched, handleChange, handleBlur, setFieldValue, isSubmitting }) => (
-            <Form>
-              <DialogContent>
-                <TextField
-                  label="Product Name"
-                  name="name"
-                  value={values.name || ""}
-                  onChange={handleChange}
-                  onBlur={handleBlur}
-                  error={touched.name && Boolean(errors.name)}
-                  helperText={touched.name && errors.name}
-                  fullWidth
-                  sx={{ mt: 1 }}
-                  autoFocus
-                />
-                <TextField
-                  label="Description"
-                  name="description"
-                  value={values.description || ""}
-                  onChange={handleChange}
-                  onBlur={handleBlur}
-                  error={touched.description && Boolean(errors.description)}
-                  helperText={touched.description && errors.description}
-                  fullWidth
-                  sx={{ mt: 2 }}
-                />
-                <TextField
-                  label="Type"
-                  select
-                  name="productType"
-                  value={values.productType || ProductType.SINGLE_PRICE}
-                  onChange={e => {
-                    handleChange(e);
-                    if (e.target.value === ProductType.SINGLE_PRICE) {
-                      setFieldValue('sizes', undefined);
-                    } else {
-                      setFieldValue('basePrice', undefined);
-                    }
-                  }}
-                  onBlur={handleBlur}
-                  fullWidth
-                  sx={{ mt: 2 }}
-                  error={touched.productType && Boolean(errors.productType)}
-                  helperText={touched.productType && errors.productType}
-                >
-                  <MenuItem value={ProductType.SINGLE_PRICE}>Unique Price</MenuItem>
-                  <MenuItem value={ProductType.MULTIPLE_SIZES}>Multiple Sizes</MenuItem>
-                </TextField>
-                {values.productType === ProductType.SINGLE_PRICE && (
+        {/* Category Dialog */}
+        <Dialog open={catDialogOpen} onClose={() => setCatDialogOpen(false)}>
+          <DialogTitle>{catEdit ? "Edit Category" : "Add Category"}</DialogTitle>
+          <Formik
+            initialValues={{ name: catName, idx: catEdit?.idx ?? catIdx }}
+            enableReinitialize
+            validationSchema={categorySchema}
+            validateOnBlur
+            validateOnChange={false}
+            onSubmit={handleCatSave}
+          >
+            {({ values, errors, touched, handleChange, handleBlur, isSubmitting, isValid, setFieldValue }) => (
+              <Form>
+                <DialogContent>
                   <TextField
-                    label="Price (€)"
-                    name="basePrice"
+                    label="Category Name"
+                    name="name"
+                    value={values.name}
+                    onChange={e => { handleChange(e); setCatName(e.target.value); }}
+                    onBlur={handleBlur}
+                    error={touched.name && Boolean(errors.name)}
+                    helperText={touched.name && errors.name}
+                    fullWidth
+                    sx={{ mt: 1 }}
+                    autoFocus
+                  />
+                  <TextField
+                    label="Index"
+                    name="idx"
                     type="number"
-                    value={values.basePrice || ""}
+                    value={values.idx}
+                    onChange={e => {
+                      handleChange(e);
+                      setCatIdx(e.target.value === '' ? '' : Number(e.target.value));
+                    }}
+                    onBlur={handleBlur}
+                    error={touched.idx && Boolean(errors.idx)}
+                    helperText={touched.idx && errors.idx}
+                    fullWidth
+                    sx={{ mt: 2 }}
+                    inputProps={{ min: 1 }}
+                  />
+                </DialogContent>
+                <DialogActions>
+                  <Button onClick={() => setCatDialogOpen(false)} disabled={isSubmitting}>Cancel</Button>
+                  <Button type="submit" variant="contained" disabled={isSubmitting || !isValid}>Save</Button>
+                </DialogActions>
+              </Form>
+            )}
+          </Formik>
+        </Dialog>
+
+        {/* Product Dialog */}
+        <Dialog open={prodDialogOpen} onClose={() => setProdDialogOpen(false)} maxWidth="sm" fullWidth>
+          <DialogTitle>{prodEdit ? "Edit Product" : "Add Product"}</DialogTitle>
+          <Formik
+            initialValues={prodData}
+            enableReinitialize
+            validationSchema={productSchema}
+            validateOnBlur
+            validateOnChange={false}
+            onSubmit={handleProdSave}
+          >
+            {({ values, errors, touched, handleChange, handleBlur, setFieldValue, isSubmitting }) => (
+              <Form>
+                <DialogContent>
+                  <TextField
+                    label="Product Name"
+                    name="name"
+                    value={values.name || ""}
                     onChange={handleChange}
                     onBlur={handleBlur}
-                    error={touched.basePrice && Boolean(errors.basePrice)}
-                    helperText={touched.basePrice && errors.basePrice}
+                    error={touched.name && Boolean(errors.name)}
+                    helperText={touched.name && errors.name}
+                    fullWidth
+                    sx={{ mt: 1 }}
+                    autoFocus
+                  />
+                  <TextField
+                    label="Description"
+                    name="description"
+                    value={values.description || ""}
+                    onChange={handleChange}
+                    onBlur={handleBlur}
+                    error={touched.description && Boolean(errors.description)}
+                    helperText={touched.description && errors.description}
                     fullWidth
                     sx={{ mt: 2 }}
                   />
-                )}
-                {values.productType === ProductType.MULTIPLE_SIZES && (
-                  <Box sx={{ mt: 2 }}>
-                    {(values.sizes || []).map((size, idx) => (
-                      <Box key={idx} sx={{ display: 'flex', gap: 1, mb: 1 }}>
-                        <TextField
-                          label="Size"
-                          name={`sizes[${idx}].name`}
-                          value={size.name}
-                          onChange={handleChange}
-                          onBlur={handleBlur}
-                          error={Array.isArray(touched.sizes) && touched.sizes[idx]?.name && Array.isArray(errors.sizes) && Boolean(errors.sizes[idx]?.name)}
-                          helperText={Array.isArray(touched.sizes) && touched.sizes[idx]?.name && Array.isArray(errors.sizes) && errors.sizes[idx]?.name}
-                          sx={{ flex: 2 }}
-                        />
-                        <TextField
-                          label="Price (€)"
-                          name={`sizes[${idx}].price`}
-                          type="number"
-                          value={size.price}
-                          onChange={handleChange}
-                          onBlur={handleBlur}
-                          error={Array.isArray(errors.sizes) && Array.isArray(touched.sizes) && touched.sizes[idx]?.price && Boolean(errors.sizes[idx]?.price)}
-                          helperText={Array.isArray(errors.sizes) && Array.isArray(touched.sizes) && touched.sizes[idx]?.price && errors.sizes[idx]?.price}
-                          sx={{ flex: 1 }}
-                        />
-                        <IconButton color="error" onClick={() => {
-                          const newSizes = [...(values.sizes || [])];
-                          newSizes.splice(idx, 1);
-                          setFieldValue('sizes', newSizes);
-                        }}>
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
-                      </Box>
+                  <TextField
+                    label="Type"
+                    select
+                    name="productType"
+                    value={values.productType || ProductType.SINGLE_PRICE}
+                    onChange={e => {
+                      handleChange(e);
+                      if (e.target.value === ProductType.SINGLE_PRICE) {
+                        setFieldValue('sizes', undefined);
+                      } else {
+                        setFieldValue('basePrice', undefined);
+                      }
+                    }}
+                    onBlur={handleBlur}
+                    fullWidth
+                    sx={{ mt: 2 }}
+                    error={touched.productType && Boolean(errors.productType)}
+                    helperText={touched.productType && errors.productType}
+                  >
+                    <MenuItem value={ProductType.SINGLE_PRICE}>Unique Price</MenuItem>
+                    <MenuItem value={ProductType.MULTIPLE_SIZES}>Multiple Sizes</MenuItem>
+                  </TextField>
+                  {values.productType === ProductType.SINGLE_PRICE && (
+                    <TextField
+                      label="Price (€)"
+                      name="basePrice"
+                      type="number"
+                      value={values.basePrice || ""}
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                      error={touched.basePrice && Boolean(errors.basePrice)}
+                      helperText={touched.basePrice && errors.basePrice}
+                      fullWidth
+                      sx={{ mt: 2 }}
+                    />
+                  )}
+                  {values.productType === ProductType.MULTIPLE_SIZES && (
+                    <Box sx={{ mt: 2 }}>
+                      {(values.sizes || []).map((size, idx) => (
+                        <Box key={idx} sx={{ display: 'flex', gap: 1, mb: 1 }}>
+                          <TextField
+                            label="Size"
+                            name={`sizes[${idx}].name`}
+                            value={size.name}
+                            onChange={handleChange}
+                            onBlur={handleBlur}
+                            error={Array.isArray(touched.sizes) && touched.sizes[idx]?.name && Array.isArray(errors.sizes) && Boolean(errors.sizes[idx]?.name)}
+                            helperText={Array.isArray(touched.sizes) && touched.sizes[idx]?.name && Array.isArray(errors.sizes) && errors.sizes[idx]?.name}
+                            sx={{ flex: 2 }}
+                          />
+                          <TextField
+                            label="Price (€)"
+                            name={`sizes[${idx}].price`}
+                            type="number"
+                            value={size.price}
+                            onChange={handleChange}
+                            onBlur={handleBlur}
+                            error={Array.isArray(errors.sizes) && Array.isArray(touched.sizes) && touched.sizes[idx]?.price && Boolean(errors.sizes[idx]?.price)}
+                            helperText={Array.isArray(errors.sizes) && Array.isArray(touched.sizes) && touched.sizes[idx]?.price && errors.sizes[idx]?.price}
+                            sx={{ flex: 1 }}
+                          />
+                          <IconButton color="error" onClick={() => {
+                            const newSizes = [...(values.sizes || [])];
+                            newSizes.splice(idx, 1);
+                            setFieldValue('sizes', newSizes);
+                          }}>
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </Box>
+                      ))}
+                      <Button variant="outlined" startIcon={<AddIcon />} onClick={() => setFieldValue('sizes', [...(values.sizes || []), { name: '', price: 0 }])}>
+                        Add Size
+                      </Button>
+                      {touched.sizes && typeof errors.sizes === 'string' && (
+                        <Typography color="error" variant="caption">{errors.sizes}</Typography>
+                      )}
+                    </Box>
+                  )}
+                  <TextField
+                    label="Category"
+                    select
+                    name="category"
+                    value={values.category?._id || values.category || ""}
+                    onChange={e => {
+                      const cat = categories.find(cat => cat._id === e.target.value);
+                      setFieldValue('category', cat || e.target.value);
+                    }}
+                    onBlur={handleBlur}
+                    error={touched.category && Boolean(errors.category)}
+                    helperText={touched.category && errors.category}
+                    fullWidth
+                    sx={{ mt: 2 }}
+                  >
+                    {categories.map(cat => (
+                      <MenuItem key={cat._id} value={cat._id}>{cat.name}</MenuItem>
                     ))}
-                    <Button variant="outlined" startIcon={<AddIcon />} onClick={() => setFieldValue('sizes', [...(values.sizes || []), { name: '', price: 0 }])}>
-                      Add Size
+                  </TextField>
+                  <TextField
+                    label="Stock (leave empty for unlimited)"
+                    name="stock"
+                    type="text"
+                    value={values.stock === undefined || values.stock === null ? 'unlimited' : values.stock}
+                    onChange={e => {
+                      let val = e.target.value;
+                      if (val === '' || val.toLowerCase() === 'unlimited') {
+                        setFieldValue('stock', undefined);
+                      } else {
+                        const num = Number(val);
+                        setFieldValue('stock', isNaN(num) ? undefined : num);
+                      }
+                    }}
+                    onBlur={handleBlur}
+                    error={touched.stock && Boolean(errors.stock)}
+                    helperText={touched.stock && errors.stock}
+                    fullWidth
+                    sx={{ mt: 2 }}
+                    inputProps={{ min: 0 }}
+                  />
+
+                  {/* Image upload */}
+                  <Box sx={{ mt: 2, mb: 1 }}>
+                    <Button
+                      variant="outlined"
+                      component="label"
+                    >
+                      {values.image_url ? 'Change Image' : 'Upload Image'}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        hidden
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          const formData = new FormData();
+                          formData.append('file', file);
+                          try {
+                            const res = await api.put('/product/image/' + values._id, formData, {
+                              headers: { 'Content-Type': 'multipart/form-data' },
+                            });
+                            setFieldValue('image_url', res.data.image_url); 
+                          } catch (err) {
+                            alert('Image upload failed');
+                          }
+                        }}
+                      />
                     </Button>
-                    {touched.sizes && typeof errors.sizes === 'string' && (
-                      <Typography color="error" variant="caption">{errors.sizes}</Typography>
+                    {values.image_url && (
+                      <Box sx={{ mt: 1 }}>
+                        <img src={`${process.env.NEXT_PUBLIC_API_URL}/${values.image_url}`} alt="Product" style={{ maxWidth: 120, maxHeight: 120, borderRadius: 8 }} />
+                      </Box>
                     )}
                   </Box>
-                )}
-                <TextField
-                  label="Category"
-                  select
-                  name="category"
-                  value={values.category?._id || values.category || ""}
-                  onChange={e => {
-                    const cat = categories.find(cat => cat._id === e.target.value);
-                    setFieldValue('category', cat || e.target.value);
-                  }}
-                  onBlur={handleBlur}
-                  error={touched.category && Boolean(errors.category)}
-                  helperText={touched.category && errors.category}
-                  fullWidth
-                  sx={{ mt: 2 }}
-                >
-                  {categories.map(cat => (
-                    <MenuItem key={cat._id} value={cat._id}>{cat.name}</MenuItem>
-                  ))}
-                </TextField>
-                <TextField
-                  label="Stock (leave empty for unlimited)"
-                  name="stock"
-                  type="text"
-                  value={values.stock === undefined || values.stock === null ? 'unlimited' : values.stock}
-                  onChange={e => {
-                    let val = e.target.value;
-                    if (val === '' || val.toLowerCase() === 'unlimited') {
-                      setFieldValue('stock', undefined);
-                    } else {
-                      const num = Number(val);
-                      setFieldValue('stock', isNaN(num) ? undefined : num);
-                    }
-                  }}
-                  onBlur={handleBlur}
-                  error={touched.stock && Boolean(errors.stock)}
-                  helperText={touched.stock && errors.stock}
-                  fullWidth
-                  sx={{ mt: 2 }}
-                  inputProps={{ min: 0 }}
-                />
+                </DialogContent>
+                <DialogActions>
+                  <Button onClick={() => setProdDialogOpen(false)} disabled={isSubmitting}>Cancel</Button>
+                  <Button type="submit" variant="contained" disabled={isSubmitting || Object.keys(errors).length > 0}>Save</Button>
+                </DialogActions>
+              </Form>
+            )}
+          </Formik>
+        </Dialog>
 
-                {/* Image upload */}
-                <Box sx={{ mt: 2, mb: 1 }}>
-                  <Button
-                    variant="outlined"
-                    component="label"
-                  >
-                    {values.image_url ? 'Change Image' : 'Upload Image'}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      hidden
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        const formData = new FormData();
-                        formData.append('file', file);
-                        try {
-                          const res = await api.put('/product/image/' + values._id, formData, {
-                            headers: { 'Content-Type': 'multipart/form-data' },
-                          });
-                          setFieldValue('image_url', res.data.image_url); 
-                        } catch (err) {
-                          alert('Image upload failed');
-                        }
-                      }}
-                    />
-                  </Button>
-                  {values.image_url && (
-                    <Box sx={{ mt: 1 }}>
-                      <img src={`${process.env.NEXT_PUBLIC_API_URL}/${values.image_url}`} alt="Product" style={{ maxWidth: 120, maxHeight: 120, borderRadius: 8 }} />
-                    </Box>
-                  )}
-                </Box>
-              </DialogContent>
-              <DialogActions>
-                <Button onClick={() => setProdDialogOpen(false)} disabled={isSubmitting}>Cancel</Button>
-                <Button type="submit" variant="contained" disabled={isSubmitting || Object.keys(errors).length > 0}>Save</Button>
-              </DialogActions>
-            </Form>
-          )}
-        </Formik>
-      </Dialog>
+        {/* Ingredient Dialog */}
+        <Dialog open={ingredientDialogOpen} onClose={() => setIngredientDialogOpen(false)} maxWidth="sm" fullWidth>
+          <DialogTitle>{ingredientEdit ? "Edit Ingredient" : "Add Ingredient"}</DialogTitle>
+          <Formik
+            initialValues={{
+              _id: ingredientEdit?._id || "",
+              name: ingredientEdit?.name || "",
+              stock: ingredientEdit?.stock ?? null,
+              description: ingredientEdit?.description || "",
+              image_url: ingredientEdit?.image_url || "",
+              file: null,
+            }}
+            enableReinitialize
+            validationSchema={ingredientSchema}
+            validateOnBlur
+            validateOnChange={false}
+            onSubmit={handleIngredientSubmit}
+          >
+            {({ values, errors, touched, handleChange, handleBlur, setFieldValue, isSubmitting }) => (
+              <Form>
+                <DialogContent>
+                  <TextField
+                    label="Ingredient Name"
+                    name="name"
+                    value={values.name}
+                    onChange={handleChange}
+                    onBlur={handleBlur}
+                    error={touched.name && Boolean(errors.name)}
+                    helperText={touched.name && errors.name}
+                    fullWidth
+                    sx={{ mt: 1 }}
+                    autoFocus
+                  />
+                  <TextField
+                    label="Stock (leave empty for unlimited)"
+                    name="stock"
+                    type="text"
+                    value={values.stock === null ? 'unlimited' : values.stock}
+                    onChange={e => {
+                      let val = e.target.value;
+                      if (val === '' || val.toLowerCase() === 'unlimited') {
+                        setFieldValue('stock', null);
+                      } else {
+                        const num = Number(val);
+                        setFieldValue('stock', isNaN(num) ? null : num);
+                      }
+                    }}
+                    onBlur={handleBlur}
+                    error={touched.stock && Boolean(errors.stock)}
+                    helperText={touched.stock && errors.stock}
+                    fullWidth
+                    sx={{ mt: 2 }}
+                    inputProps={{ min: 0 }}
+                  />
+                  <TextField
+                    label="Description"
+                    name="description"
+                    value={values.description || ""}
+                    onChange={handleChange}
+                    onBlur={handleBlur}
+                    error={touched.description && Boolean(errors.description)}
+                    helperText={touched.description && errors.description}
+                    fullWidth
+                    sx={{ mt: 2 }}
+                  />
 
-      {/* Ingredient Dialog */}
-      <Dialog open={ingredientDialogOpen} onClose={() => setIngredientDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>{ingredientEdit ? "Edit Ingredient" : "Add Ingredient"}</DialogTitle>
-        <Formik
-          initialValues={{
-            _id: ingredientEdit?._id || "",
-            name: ingredientEdit?.name || "",
-            stock: ingredientEdit?.stock ?? null,
-            description: ingredientEdit?.description || "",
-            image_url: ingredientEdit?.image_url || "",
-            file: null,
-          }}
-          enableReinitialize
-          validationSchema={ingredientSchema}
-          validateOnBlur
-          validateOnChange={false}
-          onSubmit={handleIngredientSubmit}
-        >
-          {({ values, errors, touched, handleChange, handleBlur, setFieldValue, isSubmitting }) => (
-            <Form>
-              <DialogContent>
-                <TextField
-                  label="Ingredient Name"
-                  name="name"
-                  value={values.name}
-                  onChange={handleChange}
-                  onBlur={handleBlur}
-                  error={touched.name && Boolean(errors.name)}
-                  helperText={touched.name && errors.name}
-                  fullWidth
-                  sx={{ mt: 1 }}
-                  autoFocus
-                />
-                <TextField
-                  label="Stock (leave empty for unlimited)"
-                  name="stock"
-                  type="text"
-                  value={values.stock === null ? 'unlimited' : values.stock}
-                  onChange={e => {
-                    let val = e.target.value;
-                    if (val === '' || val.toLowerCase() === 'unlimited') {
-                      setFieldValue('stock', null);
-                    } else {
-                      const num = Number(val);
-                      setFieldValue('stock', isNaN(num) ? null : num);
-                    }
-                  }}
-                  onBlur={handleBlur}
-                  error={touched.stock && Boolean(errors.stock)}
-                  helperText={touched.stock && errors.stock}
-                  fullWidth
-                  sx={{ mt: 2 }}
-                  inputProps={{ min: 0 }}
-                />
-                <TextField
-                  label="Description"
-                  name="description"
-                  value={values.description || ""}
-                  onChange={handleChange}
-                  onBlur={handleBlur}
-                  error={touched.description && Boolean(errors.description)}
-                  helperText={touched.description && errors.description}
-                  fullWidth
-                  sx={{ mt: 2 }}
-                />
-
-                {/* Image upload */}
-                <Box sx={{ mt: 2, mb: 1 }}>
-                  <Button
-                    variant="outlined"
-                    component="label"
-                  >
-                    {values.image_url ? 'Change Image' : 'Upload Image'}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      hidden
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        const formData = new FormData();
-                        formData.append('file', file);
-                        try {
-                          const actionResult = await dispatch(updateIngredientImage({ id: values._id, formData }) as any);
-                          const payload = actionResult.payload;
-                          // payload est l'objet ingredient retourné par le backend (voir le slice)
-                          if (payload && payload.image_url) {
-                            setFieldValue('image_url', payload.image_url);
-                          } else {
-                            alert('Image upload succeeded but no image_url returned');
+                  {/* Image upload */}
+                  <Box sx={{ mt: 2, mb: 1 }}>
+                    <Button
+                      variant="outlined"
+                      component="label"
+                    >
+                      {values.image_url ? 'Change Image' : 'Upload Image'}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        hidden
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          const formData = new FormData();
+                          formData.append('file', file);
+                          try {
+                            const actionResult = await dispatch(updateIngredientImage({ id: values._id, formData }) as any);
+                            const payload = actionResult.payload;
+                            // payload est l'objet ingredient retourné par le backend (voir le slice)
+                            if (payload && payload.image_url) {
+                              setFieldValue('image_url', payload.image_url);
+                            } else {
+                              alert('Image upload succeeded but no image_url returned');
+                            }
+                          } catch (err) {
+                            alert('Image upload failed');
+                            console.error(err);
                           }
-                        } catch (err) {
-                          alert('Image upload failed');
-                          console.error(err);
-                        }
-                      }}
-                    />
-                  </Button>
-                  {values.image_url && (
-                    <Box sx={{ mt: 1 }}>
-                      <img src={`${process.env.NEXT_PUBLIC_API_URL}/${values.image_url}`} alt="Product" style={{ maxWidth: 120, maxHeight: 120, borderRadius: 8 }} />
-                    </Box>
-                  )}
-                </Box>
-              </DialogContent>
-              <DialogActions>
-                <Button onClick={() => setIngredientDialogOpen(false)} disabled={isSubmitting}>Cancel</Button>
-                <Button type="submit" variant="contained" disabled={isSubmitting || Object.keys(errors).length > 0}>Save</Button>
-              </DialogActions>
-            </Form>
-          )}
-        </Formik>
-      </Dialog>
+                        }}
+                      />
+                    </Button>
+                    {values.image_url && (
+                      <Box sx={{ mt: 1 }}>
+                        <img src={`${process.env.NEXT_PUBLIC_API_URL}/${values.image_url}`} alt="Product" style={{ maxWidth: 120, maxHeight: 120, borderRadius: 8 }} />
+                      </Box>
+                    )}
+                  </Box>
+                </DialogContent>
+                <DialogActions>
+                  <Button onClick={() => setIngredientDialogOpen(false)} disabled={isSubmitting}>Cancel</Button>
+                  <Button type="submit" variant="contained" disabled={isSubmitting || Object.keys(errors).length > 0}>Save</Button>
+                </DialogActions>
+              </Form>
+            )}
+          </Formik>
+        </Dialog>
 
-      {/* Snackbar */}
-      <Snackbar open={snackbar.open} autoHideDuration={3000} onClose={() => setSnackbar({ ...snackbar, open: false })} anchorOrigin={{ vertical: 'top', horizontal: 'center' }}>
-        <MuiAlert elevation={6} variant="filled" onClose={() => setSnackbar({ ...snackbar, open: false })} severity={snackbar.severity} sx={{ width: '100%' }}>
-          {snackbar.message}
-        </MuiAlert>
-      </Snackbar>
-    </Box>
+        {/* Snackbar */}
+        <Snackbar open={snackbar.open} autoHideDuration={3000} onClose={() => setSnackbar({ ...snackbar, open: false })} anchorOrigin={{ vertical: 'top', horizontal: 'center' }}>
+          <MuiAlert elevation={6} variant="filled" onClose={() => setSnackbar({ ...snackbar, open: false })} severity={snackbar.severity} sx={{ width: '100%' }}>
+            {snackbar.message}
+          </MuiAlert>
+        </Snackbar>
+      </Box>
+    </ProtectRoute>
   );
 };
 

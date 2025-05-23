@@ -1,7 +1,6 @@
-import { Controller, Get, Param, Post, Body, Put, Delete, UseGuards, Request, Patch, SetMetadata } from '@nestjs/common';
+import { Controller, Get, Param, Post, Body, Put, Delete, Request, Patch, SetMetadata } from '@nestjs/common';
 import { OrderService } from './order.service';
 import { Order, OrderStatus, PaymentStatus } from 'src/schemas/order.schema';
-import { JwtGuard } from 'src/auth/guard/jwt.guard';
 import { GetUser } from 'src/common/decorators/get-user.decorator';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { Role } from 'src/schemas/user.schema';
@@ -12,19 +11,19 @@ import { Public } from 'src/common/decorators/public.decorator';
 import { UserService } from 'src/user/user.service';
 
 
-@UseGuards(JwtGuard)
 @Controller('order')
 export class OrderController {
     constructor(private readonly orderService: OrderService,
                 private readonly userService: UserService,
     ) {}
 
-    
+    @Roles(Role.Admin, Role.Employee)
     @Get('in-delivery')
     async getOrdersInDelivery() {
       return this.orderService.findOrdersInDelivery();
     }
 
+    @Roles(Role.Admin, Role.Employee)
     @Get('live')
     async getLiveOrders() {
       return this.orderService.findLiveOrders();
@@ -78,6 +77,7 @@ export class OrderController {
     }
 
     // 📌 Créer une commande après paiement
+    @Public()
     @Post('create')
     async createOrder(@Body() createOrderDto: CreateOrderDto): Promise<Order> {
       console.log('createOrderDto', createOrderDto);
@@ -100,6 +100,7 @@ export class OrderController {
     }
 
     // Mettre à jour une commande
+    @Roles(Role.Admin, Role.Employee)
     @Put(':id')
     async updateOrder(@Param('id') id: string, @Body() orderData: Partial<Order>) {
       return this.orderService.updateOrder(id, orderData);
@@ -110,37 +111,37 @@ export class OrderController {
       return this.orderService.updatePosition(id, { lat: body.lat, lng: body.lng });
     }
 
+    @Roles(Role.Admin, Role.Employee)
     @Patch(':id/validate-item')
     async validateItem(
       @Param('id') orderId: string,
       @Body() body: { itemId: string },
     ) {
-      console.log('order id', orderId);
-      console.log('item id', body.itemId);
       return this.orderService.validateOrderItem(orderId, body.itemId);
     }
 
     // 📌 Mettre à jour le statut d'une commande (Ex: après paiement)
     @Put(':orderId/status')
     async updateOrderStatus(@Param('orderId') orderId: string, @Body('status') status: string): Promise<Order> {
-      console.log(orderId, status);
       return this.orderService.updateOrderStatus(orderId, status as OrderStatus);
     }
 
     // supprimer toutes les commandes
-    @Public()
+    @Roles(Role.Admin)
     @Delete('deleteAll')
     async deleteAllOrders() {
       return this.orderService.deleteAllOrders();
     }
 
     // supprimer une commande
+    @Roles(Role.Admin)
     @Delete('delete/:orderId')
     async deleteOrder(@Param('orderId') orderId: string) {
       return this.orderService.deleteOrder(orderId);
     }
 
     // supprimer toutes les commandes d'un utilisateur
+    @Roles(Role.Admin)
     @Delete('delete/user/:userId')
     async deleteOrdersByUser(@Param('userId') userId: string) {
       return this.orderService.deleteOrdersByUser(userId);
@@ -151,14 +152,12 @@ export class OrderController {
     async deleteOrderByUser(@Param('userId') userId: string, @Param('orderId') orderId: string) {
       return this.orderService.deleteOrderByUser(userId, orderId);
     }
-
-    // PATCH /order/like-item
+ 
     @Patch('like-item')
     async likeOrderItem(@Body() body: { itemId: string, liked: boolean }) {
       return this.orderService.likeOrderItem(body.itemId, body.liked);
     }
 
-    // GET /order/item-liked/:itemId
     @Get('item-liked/:itemId')
     async getOrderItemLiked(@Param('itemId') itemId: string) {
       return this.orderService.getOrderItemLiked(itemId);

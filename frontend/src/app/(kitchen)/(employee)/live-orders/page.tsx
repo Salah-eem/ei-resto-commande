@@ -11,6 +11,8 @@ import useLiveOrdersSocket from '@/hooks/useLiveOrdersSocket'
 
 import OrdersDialog from '@/components/OrdersDialog'
 import { OrderStatus } from '@/types/order'
+import ProtectRoute from '@/components/ProtectRoute'
+import { Role } from '@/types/user'
 
 export default function LiveOrdersPage() {
   const dispatch = useAppDispatch()
@@ -93,47 +95,49 @@ export default function LiveOrdersPage() {
 
 
   return (
-    <Box minHeight="100vh" sx={{ background: 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)', py: { xs: 2, md: 6 } }}>
-      <Box maxWidth="md" mx="auto">
-        {error && (
-          <Typography color="error" variant="h6" textAlign="center" mb={2}>
-            {error}
-          </Typography>
-        )}
+    <ProtectRoute allowedRoles={[Role.Employee, Role.Admin]}>
+      <Box minHeight="100vh" sx={{ background: 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)', py: { xs: 2, md: 6 } }}>
+        <Box maxWidth="md" mx="auto">
+          {error && (
+            <Typography color="error" variant="h6" textAlign="center" mb={2}>
+              {error}
+            </Typography>
+          )}
 
-        {displayedOrders.length === 0 && !loading && !error && (
-          <Typography variant="body1" color="textSecondary" textAlign="center">
-            No live orders.
-          </Typography>
-        )}
+          {displayedOrders.length === 0 && !loading && !error && (
+            <Typography variant="body1" color="textSecondary" textAlign="center">
+              No live orders.
+            </Typography>
+          )}
 
-        {displayedOrders.length > 0 && (
-          <Box position="relative" boxShadow={4} borderRadius={3} bgcolor="#fff" p={{ xs: 1, md: 3 }}>
-            <LiveOrderList orders={displayedOrders} />
-            {loading && (
-              <Box position="absolute" top={0} left={0} width="100%" height="100%" display="flex" justifyContent="center" alignItems="center" bgcolor="rgba(255,255,255,0.5)" zIndex={2}>
-                <CircularProgress />
-              </Box>
-            )}
-          </Box>
-        )}
+          {displayedOrders.length > 0 && (
+            <Box position="relative" boxShadow={4} borderRadius={3} bgcolor="#fff" p={{ xs: 1, md: 3 }}>
+              <LiveOrderList orders={displayedOrders} />
+              {loading && (
+                <Box position="absolute" top={0} left={0} width="100%" height="100%" display="flex" justifyContent="center" alignItems="center" bgcolor="rgba(255,255,255,0.5)" zIndex={2}>
+                  <CircularProgress />
+                </Box>
+              )}
+            </Box>
+          )}
+        </Box>
+        <OrdersDialog
+          open={ordersDialogOpen}
+          onClose={() => setOrdersDialogOpen(false)}
+          type={ordersDialogType}
+          orders={
+            ordersDialogType === 'prepared'
+              ? preparedOrders
+              : (scheduledOrders || [])
+                  .filter(o => o.orderStatus === OrderStatus.SCHEDULED)
+                  .filter(o => !orders.some(live => live._id === o._id)) // <- exclusion ici
+                  .filter(o => o.orderStatus === OrderStatus.SCHEDULED && new Date(o.scheduledFor || '') > new Date())
+          }
+          loading={ordersDialogType === 'prepared' ? loadingPrepared : loadingScheduled}
+          error={ordersDialogType === 'prepared' ? errorPrepared : errorScheduled}
+          title={ordersDialogType === 'prepared' ? 'Prepared orders' : 'Scheduled orders'}
+        />
       </Box>
-      <OrdersDialog
-        open={ordersDialogOpen}
-        onClose={() => setOrdersDialogOpen(false)}
-        type={ordersDialogType}
-        orders={
-          ordersDialogType === 'prepared'
-            ? preparedOrders
-            : (scheduledOrders || [])
-                .filter(o => o.orderStatus === OrderStatus.SCHEDULED)
-                .filter(o => !orders.some(live => live._id === o._id)) // <- exclusion ici
-                .filter(o => o.orderStatus === OrderStatus.SCHEDULED && new Date(o.scheduledFor || '') > new Date())
-        }
-        loading={ordersDialogType === 'prepared' ? loadingPrepared : loadingScheduled}
-        error={ordersDialogType === 'prepared' ? errorPrepared : errorScheduled}
-        title={ordersDialogType === 'prepared' ? 'Prepared orders' : 'Scheduled orders'}
-      />
-    </Box>
+    </ProtectRoute>
   )
 }

@@ -25,7 +25,6 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 
-@UseGuards(JwtGuard)
 @Controller('user')
 export class UserController {
   constructor(private userService: UserService) {}
@@ -108,6 +107,7 @@ export class UserController {
     return await this.userService.update(id, dto);
   }
 
+  @Roles(Role.Admin)
   @Delete(':id')
   async delete(@Param('id') id: string) {
     return this.userService.delete(id);

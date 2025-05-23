@@ -15,6 +15,9 @@ import { RestaurantModule } from './restaurant/restaurant.module';
 import { CommonModule } from './common/common.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { IngredientModule } from './ingredient/ingredient.module';
+import { APP_GUARD } from '@nestjs/core';
+import { RolesGuard } from './auth/guard/roles.guard';
+import { JwtGuard } from './auth/guard/jwt.guard';
 
 @Module({
   imports: [
@@ -38,6 +41,16 @@ import { IngredientModule } from './ingredient/ingredient.module';
     IngredientModule,
   ],
   controllers: [],
-  providers: [DeliveryGateway,],
+  providers: [
+    DeliveryGateway,
+    {
+      provide: APP_GUARD,
+      useClass: JwtGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: RolesGuard,
+    },
+  ],
 })
 export class AppModule {}

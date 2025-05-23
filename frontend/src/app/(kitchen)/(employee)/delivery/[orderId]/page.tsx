@@ -6,6 +6,8 @@ import { Button, Box, Typography } from '@mui/material';
 import { useParams } from 'next/navigation';
 import { useAppDispatch, useAppSelector } from '@/store/slices/hooks';
 import { fetchOrder } from "@/store/slices/orderSlice";
+import ProtectRoute from "@/components/ProtectRoute";
+import { Role } from "@/types/user";
 
 const DeliverySimulatorPage = () => {
   const dispatch = useAppDispatch();
@@ -98,30 +100,32 @@ const DeliverySimulatorPage = () => {
   };
 
   return (
-    <Box sx={{ p: 4, textAlign: 'center' }}>
-      <Typography variant="h4" mb={3}>Delivery Simulator</Typography>
-      <Typography variant="subtitle1" mb={1}>Order ID: {orderId}</Typography>
+    <ProtectRoute allowedRoles={[Role.Employee, Role.Admin]}>
+      <Box sx={{ p: 4, textAlign: 'center' }}>
+        <Typography variant="h4" mb={3}>Delivery Simulator</Typography>
+        <Typography variant="subtitle1" mb={1}>Order ID: {orderId}</Typography>
 
-      {loading && <Typography>Loading order details...</Typography>}
-      {error && <Typography color="error">{error}</Typography>}
+        {loading && <Typography>Loading order details...</Typography>}
+        {error && <Typography color="error">{error}</Typography>}
 
-      {order && order.deliveryAddress && (
-        <Box mb={2}>
-          <Typography variant="body1">Client Position:</Typography>
-          <Typography variant="body2">
-            Lat: {order.deliveryAddress.lat}, Lng: {order.deliveryAddress.lng}
-          </Typography>
-        </Box>
-      )}
+        {order && order.deliveryAddress && (
+          <Box mb={2}>
+            <Typography variant="body1">Client Position:</Typography>
+            <Typography variant="body2">
+              Lat: {order.deliveryAddress.lat}, Lng: {order.deliveryAddress.lng}
+            </Typography>
+          </Box>
+        )}
 
-      <Button
-        variant="contained"
-        disabled={isSimulating || positions.length === 0}
-        onClick={startSimulation}
-      >
-        {isSimulating ? 'Simulating...' : 'Start Delivery Simulation'}
-      </Button>
-    </Box>
+        <Button
+          variant="contained"
+          disabled={isSimulating || positions.length === 0}
+          onClick={startSimulation}
+        >
+          {isSimulating ? 'Simulating...' : 'Start Delivery Simulation'}
+        </Button>
+      </Box>
+    </ProtectRoute>
   );
 };
 
