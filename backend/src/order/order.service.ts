@@ -22,6 +22,7 @@ import { CreateOrderByEmployeeDto } from './dto/create-order-by-employee.dto';
 import { OrderItem, OrderItemDocument } from 'src/schemas/order-item.schema';
 import { endOfDay, startOfDay } from 'date-fns';
 import { SchedulerRegistry, Cron, CronExpression } from '@nestjs/schedule';
+import { DeliveryGateway } from 'src/gateway/delivery.gateway';
 
 @Injectable()
 export class OrderService implements OnModuleInit {
@@ -33,6 +34,7 @@ export class OrderService implements OnModuleInit {
     private readonly restaurantService: RestaurantService,
     @Inject(forwardRef(() => LiveOrdersGateway))
     private readonly liveOrdersGateway: LiveOrdersGateway,
+    private readonly deliveryGateway: DeliveryGateway,
     private schedulerRegistry: SchedulerRegistry,
   ) {}
 
@@ -278,6 +280,7 @@ export class OrderService implements OnModuleInit {
         throw new BadRequestException("Impossible to schedule an order that has already been prepared or has items prepared");
       } else {
         dto.orderStatus = OrderStatus.SCHEDULED;
+        this.deliveryGateway.emitStatusUpdate(id, OrderStatus.SCHEDULED);
       }
     }
     updatedOrder = await this.orderModel
@@ -358,6 +361,7 @@ export class OrderService implements OnModuleInit {
       const currentOrder = await this.orderModel.findById(id).exec();
       if (currentOrder && currentOrder.orderStatus === OrderStatus.PREPARED) {
         dto.orderStatus = OrderStatus.IN_PREPARATION;
+        this.deliveryGateway.emitStatusUpdate(id, OrderStatus.IN_PREPARATION);
       }
     } else {
       dto.items = existingItemIds;
@@ -425,9 +429,13 @@ export class OrderService implements OnModuleInit {
   }
 
   async updatePosition(id: string, pos: { lat: number; lng: number }): Promise<Order> {
-    return this.orderModel
+    const updatedOrder = await this.orderModel
       .findByIdAndUpdate(id, { deliveryPosition: pos }, { new: true })
       .orFail(() => new NotFoundException('Order not found'));
+
+    // Emit position update to all clients in the order room
+    this.deliveryGateway.emitPositionUpdate(id, pos.lat, pos.lng);
+    return updatedOrder;
   }
 
   async validateOrderItem(orderId: string, itemId: string): Promise<Order> {
@@ -453,19 +461,19 @@ export class OrderService implements OnModuleInit {
     if (allPrepared) {
       order.orderStatus = OrderStatus.PREPARED;
       await order.save();
+      this.deliveryGateway.emitStatusUpdate(orderId, order.orderStatus);
     }
     this.liveOrdersGateway.sendUpdate();
     return order;
   }
 
   async updateOrderStatus(orderId: string, status: OrderStatus): Promise<Order> {
-    return this.orderModel
+    const updatedOrder = await this.orderModel
       .findByIdAndUpdate(orderId, { orderStatus: status }, { new: true })
-      .orFail(() => new NotFoundException('Order not found'))
-      .then(o => {
-        this.liveOrdersGateway.sendUpdate();
-        return o;
-      });
+      .orFail(() => new NotFoundException('Order not found'));
+    this.liveOrdersGateway.sendUpdate();
+    this.deliveryGateway.emitStatusUpdate(orderId, status);
+    return updatedOrder;
   }
 
   async deleteAllOrders(): Promise<any> {

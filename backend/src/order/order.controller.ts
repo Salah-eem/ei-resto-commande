@@ -62,6 +62,7 @@ export class OrderController {
     }
 
     // 📌 Récupérer une commande
+    @Public()
     @Get(':id')
     async getOrderById(@Param('id') id: string) {
       return this.orderService.getOrderWithCustomer(id);
@@ -121,6 +122,7 @@ export class OrderController {
     }
 
     // 📌 Mettre à jour le statut d'une commande (Ex: après paiement)
+    @Public()
     @Put(':orderId/status')
     async updateOrderStatus(@Param('orderId') orderId: string, @Body('status') status: string): Promise<Order> {
       return this.orderService.updateOrderStatus(orderId, status as OrderStatus);

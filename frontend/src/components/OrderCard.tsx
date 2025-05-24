@@ -46,7 +46,7 @@ const OrderCard: React.FC<{ order: Order, deliveryFee: number }> = ({ order, del
       {/* Zone scrollable pour les items */}
       <Box sx={{ maxHeight: 150, overflowY: "auto", pr: 1 }}>
         {order.items.map((item: any) => (
-          <OrderItem key={item.productId} item={item} />
+          <OrderItem key={item._id} item={item} />
         ))}
       </Box>
 
@@ -66,7 +66,7 @@ const OrderCard: React.FC<{ order: Order, deliveryFee: number }> = ({ order, del
         </Typography>
       </Stack>
 
-      {order.orderType === "delivery" && order.orderStatus !== "delivered" && order.orderStatus !== "canceled" && (
+      {/* {order.orderType === "delivery" && order.orderStatus !== "delivered" && order.orderStatus !== "canceled" && ( */}
         <Box mt={2}>
           <Link href={`/order-tracking/${order._id}`} passHref>
             <Button variant="outlined" fullWidth>
@@ -74,7 +74,7 @@ const OrderCard: React.FC<{ order: Order, deliveryFee: number }> = ({ order, del
             </Button>
           </Link>
         </Box>
-      )}
+      {/* )} */}
     </Paper>
   );
 };

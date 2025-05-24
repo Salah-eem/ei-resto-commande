@@ -8,6 +8,7 @@ import { LiveOrdersGateway } from 'src/gateway/live-orders.gateway';
 import { UserSchema } from 'src/schemas/user.schema';
 import { OrderItemSchema } from 'src/schemas/order-item.schema';
 import { UserService } from 'src/user/user.service';
+import { DeliveryGateway } from 'src/gateway/delivery.gateway';
 
 @Module({
   imports: [MongooseModule.forFeature([{ name: 'Order', schema: OrderSchema}]),
@@ -15,17 +16,24 @@ import { UserService } from 'src/user/user.service';
             MongooseModule.forFeature([{ name: 'Cart', schema: CartSchema}]),
             MongooseModule.forFeature([{ name: 'User', schema: UserSchema}])],
   providers: [
-    OrderService, {
+    OrderService, 
+    UserService,
+    LiveOrdersGateway,
+    DeliveryGateway,
+    {
       provide: LiveOrdersGateway,
       useClass: LiveOrdersGateway,
     },
-    LiveOrdersGateway,
-    UserService,
+    {
+      provide: DeliveryGateway,
+      useClass: DeliveryGateway,
+    },
   ],
   controllers: [OrderController],
   exports: [
     OrderService,
     LiveOrdersGateway,
+    DeliveryGateway,
   ],
 })
 export class OrderModule {}

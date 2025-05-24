@@ -67,7 +67,7 @@ const LoginPage: React.FC = () => {
             router.push('/my-orders');
             break;
           case Role.Employee:
-            router.push('/take-order');
+            router.push('/take-order/new');
             break;
           case Role.Admin:
             router.push('/dashboard');

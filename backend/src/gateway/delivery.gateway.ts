@@ -1,3 +1,4 @@
+import { forwardRef, Inject } from '@nestjs/common';
 import {
   WebSocketGateway,
   SubscribeMessage,
@@ -5,17 +6,25 @@ import {
   ConnectedSocket,
   OnGatewayConnection,
   OnGatewayDisconnect,
+  WebSocketServer,
 } from '@nestjs/websockets';
-import { Socket } from 'socket.io';
+import { Socket, Server } from 'socket.io';
 import { OrderService } from 'src/order/order.service';
 
 @WebSocketGateway({
   cors: {
-    origin: '*', // Adapte selon tes besoins
-  },
+    origin: '*',
+    methods: ['GET', 'POST'],
+    credentials: true,
+  }
 })
 export class DeliveryGateway implements OnGatewayConnection, OnGatewayDisconnect {
-  constructor(private readonly orderService: OrderService) {}
+  @WebSocketServer()
+  server: Server;
+  constructor(
+    @Inject(forwardRef(() => OrderService))
+    private readonly orderService: OrderService
+  ) {}
 
   handleConnection(client: Socket) {
     console.log(`Client connected: ${client.id}`);
@@ -55,5 +64,13 @@ export class DeliveryGateway implements OnGatewayConnection, OnGatewayDisconnect
 
     // Notifier les clients
     client.to(data.orderId).emit('statusUpdate', { status: data.status });
+  }
+
+  emitStatusUpdate(orderId: string, status: string) {
+    this.server.to(orderId).emit('statusUpdate', { status });
+  }
+
+  emitPositionUpdate(orderId: string, lat: number, lng: number) {
+    this.server.to(orderId).emit('locationUpdate', { lat, lng });
   }
 }

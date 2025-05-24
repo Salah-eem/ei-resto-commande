@@ -8,6 +8,7 @@ import { Role } from '@/types/user';
 
 const statuses = [
   'in preparation',
+  'prepared',
   'ready for pickup',
   'ready for delivery',
   'picked up',
@@ -41,7 +42,7 @@ const OrderStatusPage = () => {
   const updateStatus = async (newStatus: string) => {
     try {
       setUpdating(true);
-      await axios.put(`http://localhost:3001/order/${orderId}/status`, { orderStatus: newStatus });
+      await axios.put(`http://localhost:3001/order/${orderId}/status`, { status: newStatus });
       setOrder({ ...order, orderStatus: newStatus });
     } catch (err) {
       setError('Failed to update status');
