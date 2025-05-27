@@ -150,9 +150,11 @@ export default function OrderTrackingPage() {
 
   // when order arrives, set positions + initial route if needed
   useEffect(() => {
-    if (!order || !restaurantAddress || !order.deliveryAddress) return;
+    if (!order || !restaurantAddress) return;
 
     setStatus(order.orderStatus);
+
+    if (!order.deliveryAddress) return;
 
     const r: [number, number] = [restaurantAddress.lat, restaurantAddress.lng];
     const c: [number, number] = [order.deliveryAddress.lat, order.deliveryAddress.lng];

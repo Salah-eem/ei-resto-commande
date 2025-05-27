@@ -129,6 +129,20 @@ export const fetchPreparedOrders = createAsyncThunk(
   }
 );
 
+export const fetchDeliveryOrders = createAsyncThunk(
+  "orders/fetchDeliveryOrders",
+  async (_, { rejectWithValue }) => {
+    try {
+      const response = await api.get("/order/in-delivery");
+      return response.data;
+    } catch (error: any) {
+      return rejectWithValue(
+        error.response?.data?.message || "Erreur lors du chargement des commandes de livraison."
+      );
+    }
+  }
+);
+
 // 📌 Mettre à jour le statut d'une commande
 export const updateOrderStatus = createAsyncThunk(
   "orders/updateOrderStatus",
@@ -188,7 +202,18 @@ const orderSlice = createSlice({
         state.loading = false;
         state.error = action.payload as string;
       })
-
+      .addCase(fetchDeliveryOrders.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(fetchDeliveryOrders.fulfilled, (state, action) => {
+        state.loading = false;
+        state.orders = action.payload;
+      })
+      .addCase(fetchDeliveryOrders.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      })
       .addCase(fetchOrder.pending, (state) => {
         state.loading = true;
         state.error = null;

@@ -30,10 +30,13 @@ export class UserController {
   constructor(private userService: UserService) {}
 
   @Get('profile')
-  async getProfile(@GetUser() user: any) {
-    // Grâce au JwtGuard, req.user contient les informations du token
-    // Par exemple, vous pouvez utiliser l'email pour récupérer le profil complet
-    return this.userService.findByEmail(user.email);
+  async getProfile(@GetUser() user: any): Promise<UserDto | null> {
+    let profile = await this.userService.findByEmail(user.email);
+    if (profile) {
+      const { password, ...rest } = (profile as any)._doc ? (profile as any)._doc : profile;
+      return rest;
+    }
+    return null;
   }
 
   @Roles(Role.Admin)

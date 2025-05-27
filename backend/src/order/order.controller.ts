@@ -19,8 +19,8 @@ export class OrderController {
 
     @Roles(Role.Admin, Role.Employee)
     @Get('in-delivery')
-    async getOrdersInDelivery() {
-      return this.orderService.findOrdersInDelivery();
+    async findDeliveryOrders() {
+      return this.orderService.findDeliveryOrders();
     }
 
     @Roles(Role.Admin, Role.Employee)

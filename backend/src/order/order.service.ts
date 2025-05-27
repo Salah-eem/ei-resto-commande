@@ -52,12 +52,80 @@ export class OrderService implements OnModuleInit {
   }
 
 
-  async findOrdersInDelivery(): Promise<Order[]> {
-    return this.orderModel.find({
-      orderStatus: OrderStatus.READY_FOR_DELIVERY,
+  async findDeliveryOrders(): Promise<any[]> {
+    // On récupère les commandes de livraison prêtes ou en cours de livraison
+    const orders = await this.orderModel.find({
+      orderStatus: { $in: [OrderStatus.READY_FOR_DELIVERY, OrderStatus.OUT_FOR_DELIVERY] },
       orderType: OrderType.DELIVERY,
-      createdAt: { $gte: startOfDay(new Date()), $lt: endOfDay(new Date()) },
-    }).exec();
+    })
+      .sort('-createdAt')
+      .populate({
+        path: 'items',
+        model: 'OrderItem',
+        populate: {
+          path: 'productId',
+          model: 'Product',
+          select: 'name image_url productType basePrice sizes category',
+          populate: {
+            path: 'category',
+            model: 'Category',
+            select: 'name',
+          },
+        },
+      })
+      .populate({
+        path: 'userId',
+        model: 'User',
+        select: 'firstName phone',
+      })
+      .lean();
+    if (!orders || orders.length === 0) return [];
+    // On enrichit chaque commande avec items détaillés et customer
+    return orders.map(order => {
+      const customerData = {
+        name: (order.userId as any)?.firstName ?? order.customer?.name,
+        phone: (order.userId as any)?.phone ?? order.customer?.phone,
+      };
+      const items = (order.items as any[]).map(oi => {
+        const prod = oi.productId as any;
+        let computedPrice = oi.price;
+        if (prod.productType === 'multiple_sizes' && prod.sizes) {
+          const sizeMatch = prod.sizes.find((s: any) => s.name === oi.size);
+          if (sizeMatch) computedPrice = sizeMatch.price;
+        } else if (prod.productType === 'single_price' && prod.basePrice != null) {
+          computedPrice = prod.basePrice;
+        }
+        return {
+          _id: oi._id,
+          productId: prod._id,
+          name: prod.name,
+          price: computedPrice,
+          quantity: oi.quantity,
+          size: oi.size,
+          image_url: prod.image_url,
+          category: prod.category,
+          preparedQuantity: oi.preparedQuantity ?? 0,
+          isPrepared: oi.isPrepared ?? false,
+        };
+      });
+      return {
+        _id: order._id,
+        source: order.source,
+        customer: customerData,
+        items,
+        totalAmount: order.totalAmount,
+        orderStatus: order.orderStatus,
+        paymentMethod: order.paymentMethod,
+        paymentStatus: order.paymentStatus,
+        orderType: order.orderType,
+        deliveryAddress: order.deliveryAddress,
+        lastPositionUpdate: order.lastPositionUpdate,
+        positionHistory: order.positionHistory,
+        createdAt: order.createdAt,
+        scheduledFor: order.scheduledFor,
+        deliveryDriver: order.deliveryDriver,
+      };
+    });
   }
 
   async findLiveOrders(): Promise<any[]> {

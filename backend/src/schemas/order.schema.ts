@@ -103,6 +103,9 @@ export class Order extends Document {
 
   @Prop({ type: Date, required: false, default: null })
   scheduledFor?: Date | null;
+
+  @Prop({ type: Types.ObjectId, ref: 'User', required: false })
+  deliveryDriver?: Types.ObjectId | null;
 }
 
 export const OrderSchema = SchemaFactory.createForClass(Order);

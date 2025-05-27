@@ -1,6 +1,7 @@
 import { Address } from "./address";
 import { CartItem } from "./cartItem";
 import { OrderItem } from "./orderItem";
+import { User } from "./user";
 
 export enum OrderStatus {
   CONFIRMED = 'confirmed',
@@ -42,12 +43,6 @@ export interface Customer {
   phone: string;
 }
 
-// Ajout du type DeliveryPerson pour extension future
-export interface DeliveryPerson {
-  name: string;
-  phone?: string;
-}
-
 export interface Order {
   _id: string;
   userId: string;
@@ -65,5 +60,5 @@ export interface Order {
   positionHistory: PositionHistory[];
   lastPositionUpdate: string | null;
   scheduledFor: string | null; // Date ISO string
-  deliveryPerson?: DeliveryPerson; // Ajouté pour suivi livreur
+  deliveryDriver?: User;
 }
