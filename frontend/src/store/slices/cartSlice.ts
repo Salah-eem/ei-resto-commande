@@ -1,9 +1,6 @@
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
-import axios from "axios";
 import { CartItem } from "@/types/cartItem";
-
-// const API_URL = "http://localhost:3001/cart"; // URL backend
-const API_URL = process.env.NEXT_PUBLIC_API_URL!+"/cart";
+import api from "@/lib/api";
 
 
 interface CartState {
@@ -21,7 +18,7 @@ const initialState: CartState = {
 // 📌 Récupérer le panier
 export const fetchCart = createAsyncThunk("cart/fetchCart", async (userId: string, { rejectWithValue }) => {
   try {
-    const response = await axios.get(`${API_URL}/${userId}`);
+    const response = await api.get(`/cart/${userId}`);
     return response.data.items;
   } catch (error: any) {
     return rejectWithValue(error.response?.data?.message || "Erreur lors du chargement du panier.");
@@ -33,7 +30,7 @@ export const addToCart = createAsyncThunk(
   "cart/addToCart",
   async ({ userId, item }: { userId: string; item: CartItem }, { rejectWithValue }) => {
     try {
-      const response = await axios.post(`${API_URL}/${userId}/add`, item);
+      const response = await api.post(`/cart/${userId}/add`, item);
       return response.data.items;
     } catch (error: any) {
       return rejectWithValue(error.response?.data?.message || "Erreur lors de l'ajout du produit au panier.");
@@ -46,7 +43,7 @@ export const updateCartQuantity = createAsyncThunk(
   "cart/updateCartQuantity",
   async ({ userId, productId, size, quantity }: { userId: string; productId: string; size?: string; quantity: number }, { rejectWithValue }) => {
     try {
-      const response = await axios.patch(`${API_URL}/${userId}/update`, {
+      const response = await api.patch(`/cart/${userId}/update`, {
         productId,
         size,
         quantity,
@@ -63,7 +60,7 @@ export const removeFromCart = createAsyncThunk(
   "cart/removeFromCart",
   async ({ userId, productId, size }: { userId: string; productId: string; size?: string }, { rejectWithValue }) => {
     try {
-      const response = await axios.delete(`${API_URL}/${userId}/${productId}`, {
+      const response = await api.delete(`/cart/${userId}/${productId}`, {
         data: { size },
       });
       return response.data.items;
@@ -76,7 +73,7 @@ export const removeFromCart = createAsyncThunk(
 // 📌 Vider complètement le panier
 export const clearCart = createAsyncThunk("cart/clearCart", async (userId: string, { rejectWithValue }) => {
   try {
-    await axios.delete(`${API_URL}/${userId}/clear`);
+    await api.delete(`/cart/${userId}/clear`);
     return [];
   } catch (error: any) {
     return rejectWithValue(error.response?.data?.message || "Erreur lors de la suppression du panier.");

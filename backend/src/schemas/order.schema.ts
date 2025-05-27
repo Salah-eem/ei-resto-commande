@@ -1,12 +1,19 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document } from 'mongoose';
+import { Document, Types } from 'mongoose';
+import { Address, AddressSchema } from './address.schema';
+import { OrderItem } from './order-item.schema';
 
 export type OrderDocument = Order & Document;
 
 export enum OrderStatus {
-  IN_PROGRESS = 'in_progress',
-  READY = 'ready',
-  PICKED_UP = 'picked_up',
+  CONFIRMED = 'confirmed',
+  SCHEDULED = 'scheduled',
+  IN_PREPARATION = 'in preparation',
+  PREPARED = 'prepared',
+  READY_FOR_PICKUP = 'ready for pickup',
+  READY_FOR_DELIVERY = 'ready for delivery',
+  PICKED_UP = 'picked up',
+  OUT_FOR_DELIVERY = 'out for delivery',
   DELIVERED = 'delivered',
   CANCELED = 'canceled',
 }
@@ -28,39 +35,37 @@ export enum OrderType {
   DELIVERY = 'delivery',
 }
 
+@Schema({ _id: false })
+export class Customer {
+  @Prop({ required: true })
+  name: string;
+
+  @Prop({ required: true })
+  phone: string;
+}
+
 @Schema({ timestamps: true })
 export class Order extends Document {
-  @Prop({ required: true })
-  userId: string;
+  @Prop({ type: Types.ObjectId, ref: 'User', required: false })
+  userId?: Types.ObjectId;
 
-  @Prop({
-    type: [
-      {
-        productId: { type: String, required: true },
-        name: { type: String, required: true },
-        quantity: { type: Number, required: true },
-        price: { type: Number, required: true },
-        size: { type: String, required: false },
-        image_url: { type: String, required: false },
-      },
-    ],
-  })
-  items: {
-    productId: string;
-    name: string;
-    quantity: number;
-    price: number;
-    size?: string;
-    image_url?: string;
-  }[];
+  @Prop({ type: String, default: 'online' })
+  source: string;
+
+  @Prop({ type: Customer, required: false })
+  customer?: Customer;
+
+  // @Prop({ type: [OrderItem] })
+  // items: OrderItem[];
+
+  @Prop({ type: [Types.ObjectId], ref: 'OrderItem' })
+  items: Types.ObjectId[];
+
 
   @Prop({ required: true })
   totalAmount: number;
 
-  @Prop({ default: 0 })
-  deliveryFee: number;
-
-  @Prop({ type: String, enum: Object.values(OrderStatus), default: OrderStatus.IN_PROGRESS })
+  @Prop({ type: String, enum: Object.values(OrderStatus), default: OrderStatus.IN_PREPARATION })
   orderStatus: OrderStatus;
 
   @Prop({ type: String, enum: Object.values(PaymentMethod), required: true })
@@ -71,13 +76,36 @@ export class Order extends Document {
 
   @Prop({ type: String, enum: Object.values(OrderType), required: true })
   orderType: OrderType;
-  
-  @Prop({ type: Number, default: 30 }) // Duration in minutes
-  estimatedDelivery: number;
+
+  @Prop({
+    type: AddressSchema,
+    required: false,
+    default: null,
+  })
+  deliveryAddress?: Address | null;
+
+  @Prop({
+    type: [
+      {
+        type: AddressSchema,
+        timestamp: { type: Date, default: Date.now },
+      },
+    ],
+    default: [],
+  })
+  positionHistory: (Address & { timestamp: Date })[];
+
+  @Prop({ type: Date, default: null })
+  lastPositionUpdate: Date;
 
   @Prop({ type: Date, default: Date.now })
   createdAt: Date;
+
+  @Prop({ type: Date, required: false, default: null })
+  scheduledFor?: Date | null;
+
+  @Prop({ type: Types.ObjectId, ref: 'User', required: false })
+  deliveryDriver?: Types.ObjectId | null;
 }
 
 export const OrderSchema = SchemaFactory.createForClass(Order);
-

@@ -65,4 +65,36 @@ export class CartService {
     await cart.save();
     return cart;
   }
+
+  // ✅ Fusionner le panier d'un invité avec le panier d'un utilisateur connecté
+  async mergeCart(guestId: string, userId: string): Promise<Cart> {
+    // Récupérer le panier de l'invité et le panier de l'utilisateur
+    const guestCart = await this.cartModel.findOne({ userId: guestId });
+    let userCart = await this.cartModel.findOne({ userId });
+    
+    if (!userCart && guestCart) {
+      // Si l'utilisateur n'a pas de panier, réattribuer le panier invité à l'utilisateur
+      guestCart.userId = userId;
+      await guestCart.save();
+      return guestCart;
+    } else if (guestCart && userCart) {
+      // Si l'utilisateur a déjà un panier, fusionner les articles
+      guestCart.items.forEach(guestItem => {
+        const userItem = userCart.items.find(item => item.productId.toString() === guestItem.productId.toString());
+        if (userItem) {
+          // Additionner les quantités
+          userItem.quantity += guestItem.quantity;
+        } else {
+          // Ajouter l'article du panier invité
+          userCart.items.push(guestItem);
+        }
+      });
+      await userCart.save();
+      // Optionnel : Supprimer le panier invité
+      await this.cartModel.deleteOne({ userId: guestId });
+      return userCart;
+    }
+    // Si aucun panier invité n'existe, on retourne simplement le panier utilisateur (ou un panier vide)
+    return userCart!;
+  }
 }

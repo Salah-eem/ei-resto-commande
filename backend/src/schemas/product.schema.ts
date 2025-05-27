@@ -12,16 +12,16 @@ export class Product extends Document {
   @Prop({ required: true })
   name: string;
 
-  @Prop({ required: true })
+  @Prop({ required: false })
   description: string;
 
   @Prop({ type: Types.ObjectId, ref: 'Category', required: true })
-  category: Category; // Référence vers la catégorie
+  category: Types.ObjectId; // Référence vers la catégorie
 
   @Prop()
   image_url: string;
 
-  @Prop({ required: true })
+  @Prop({ required: false, default: null })
   stock: number;
 
   @Prop({ required: true, enum: ProductType })
@@ -36,6 +36,9 @@ export class Product extends Document {
     default: null, // Utilisé seulement si `productType === MULTIPLE_SIZES`
   })
   sizes?: { name: string; price: number }[];
+
+  @Prop({ type: [{ type: Types.ObjectId, ref: 'Ingredient' }], default: [] })
+  ingredients: Types.ObjectId[];
 }
 
 export const ProductSchema = SchemaFactory.createForClass(Product);

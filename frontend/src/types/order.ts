@@ -1,11 +1,19 @@
+import { Address } from "./address";
 import { CartItem } from "./cartItem";
+import { OrderItem } from "./orderItem";
+import { User } from "./user";
 
 export enum OrderStatus {
-  IN_PROGRESS = "in_progress",
-  READY = "ready",
-  PICKED_UP = "picked_up",
-  DELIVERED = "delivered",
-  CANCELED = "canceled",
+  CONFIRMED = 'confirmed',
+  SCHEDULED = 'scheduled',
+  IN_PREPARATION = 'in preparation',
+  PREPARED = 'prepared',
+  READY_FOR_PICKUP = 'ready for pickup',
+  READY_FOR_DELIVERY = 'ready for delivery',
+  PICKED_UP = 'picked up',
+  OUT_FOR_DELIVERY = 'out for delivery',
+  DELIVERED = 'delivered',
+  CANCELED = 'canceled',
 }
 
 export enum PaymentStatus {
@@ -14,21 +22,43 @@ export enum PaymentStatus {
   FAILED = "failed",
 }
 
+export enum PaymentMethod {
+  CARD = "card",
+  PAYPAL = "paypal",
+  CASH = "cash",
+}
+
 export enum OrderType {
   PICKUP = "pickup",
   DELIVERY = "delivery",
 }
 
+// 🔄 Historique position avec timestamp
+export interface PositionHistory extends Address {
+  timestamp: string; // Date ISO string
+}
+
+export interface Customer {
+  name: string;
+  phone: string;
+}
+
 export interface Order {
   _id: string;
   userId: string;
-  items: CartItem[];
+  source: string;
+  customer: Customer; // Added customer details
+  items: OrderItem[];
   totalAmount: number;
-  deliveryFee?: number;
   orderStatus: OrderStatus;
+  paymentMethod: PaymentMethod;
   paymentStatus: PaymentStatus;
   orderType: OrderType;
-  estimatedDelivery: number;
   createdAt: string;
   updatedAt: string;
+  deliveryAddress: Address | null;
+  positionHistory: PositionHistory[];
+  lastPositionUpdate: string | null;
+  scheduledFor: string | null; // Date ISO string
+  deliveryDriver?: User;
 }

@@ -1,29 +1,35 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Card, CardContent, CardMedia, Typography, IconButton, Box } from '@mui/material';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
-import { useDispatch } from 'react-redux';
+import LikeIcon from '@mui/icons-material/ThumbUpAltOutlined';
+import { useDispatch, useSelector } from 'react-redux';
 import { addToCart } from '@/store/slices/cartSlice';
-import { getUserId } from '@/utils/user';
 import { Product, ProductType } from '@/types/product';
 import SizeDialog from './SizeDialog';
+import { RootState } from '@/store/store';
+import { capitalizeFirstLetter } from '@/utils/functions.utils';
+
+interface ProductStats {
+  productId: string;
+  totalOrders: number;
+  totalLikes: number;
+  likePercentage: number;
+}
 
 interface ProductCardProps {
   product: Product;
   isHorizontal?: boolean;
+  stats?: ProductStats;
 }
 
-const ProductCard: React.FC<ProductCardProps> = ({ product, isHorizontal = false }) => {
+const ProductCard: React.FC<ProductCardProps> = ({ product, isHorizontal = false, stats }) => {
   const API_URL = process.env.NEXT_PUBLIC_API_URL!;
   const dispatch = useDispatch();
-  const [userId, setUserId] = useState<string | null>(null);
   const [openDialog, setOpenDialog] = useState(false);
   const [selectedSize, setSelectedSize] = useState<string | undefined>(undefined);
-
-  useEffect(() => {
-    setUserId(getUserId());
-  }, []);
-
+  const userId = useSelector((state: RootState) => state.user.userId);  
+  const isOutOfStock = typeof product.stock === 'number' && product.stock <= 0;
   const handleClickOpen = () => setOpenDialog(true);
   const handleCloseDialog = () => setOpenDialog(false);
 
@@ -41,7 +47,10 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isHorizontal = false
       item: {
         productId: product._id,
         name: product.name,
-        price: product.productType === ProductType.SINGLE_PRICE ? product.basePrice! : product.sizes?.find(s => s.name === size)?.price || 0,
+        price:
+          product.productType === ProductType.SINGLE_PRICE
+            ? product.basePrice!
+            : product.sizes?.find(s => s.name === size)?.price || 0,
         quantity,
         size: size || undefined,
         image_url: product.image_url,
@@ -54,30 +63,64 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isHorizontal = false
   };
 
   return (
-      <Card
-        sx={{
-          width: isHorizontal ? '100%' : 250,
-          minHeight: isHorizontal ? 140 : 340, // Ajustement dynamique de la hauteur
-          borderRadius: 3,
-          boxShadow: 4,
-          display: 'flex',
-          flexDirection: isHorizontal ? 'row-reverse' : 'column',
-          transition: 'transform 0.3s',
-          '&:hover': { transform: 'scale(1.03)' }
-        }}
-      >
-
-      <Box sx={{ position: 'relative' }}>
+    <Card
+      sx={{
+        width: isHorizontal ? '100%' : 250,
+        minHeight: isHorizontal ? 140 : 340,
+        borderRadius: 3,
+        boxShadow: 4,
+        display: 'flex',
+        flexDirection: isHorizontal ? 'row-reverse' : 'column',
+        transition: 'transform 0.3s',
+        '&:hover': { transform: isOutOfStock ? undefined : 'scale(1.03)' },
+        opacity: isOutOfStock ? 0.5 : 1,
+        pointerEvents: isOutOfStock ? 'none' : 'auto',
+        filter: isOutOfStock ? 'grayscale(0.7)' : undefined,
+      }}
+    >
+      <Box sx={{ position: 'relative', display: 'flex' }}>
         <CardMedia
           component="img"
-          height={isHorizontal ? 120 : 160}
-          width={isHorizontal ? 100 : '100%'}
-          image={product.image_url ? `${API_URL}/${product.image_url}` : '/placeholder.png'}
+          image={product.image_url ? `${API_URL}/${product.image_url}` : '/alt-pizza.jpg'}
           alt={product.name}
-          sx={{ borderRadius: isHorizontal ? '10px 0 0 10px' : '10px 10px 0 0', objectFit: 'cover' }}
+          onError={e => {
+            const target = e.target as HTMLImageElement;
+            if (target.src !== '/alt-pizza.jpg') target.src = '/alt-pizza.jpg';
+          }}
+          sx={{
+            width: isHorizontal ? 150 : '100%',
+            height: isHorizontal ? '100%' : 160,
+            borderRadius: isHorizontal ? '10px 0 0 10px' : '10px 10px 0 0',
+            objectFit: 'cover',
+          }}
         />
+        {isOutOfStock && (
+          <Box sx={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            bgcolor: 'rgba(255,255,255,0.7)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderRadius: isHorizontal ? '10px 0 0 10px' : '10px 10px 0 0',
+            zIndex: 2,
+          }}>
+            <Typography variant="h6" sx={{ color: 'error.main' }} fontWeight={700}>
+              Victim of its own success
+            </Typography>
+          </Box>
+        )}
         <Box sx={{ position: 'absolute', bottom: 10, right: 10 }}>
-          <IconButton onClick={product.productType === ProductType.MULTIPLE_SIZES ? handleClickOpen : () => handleAddToCart(undefined, 1)}>
+          <IconButton color="primary"
+            onClick={
+              product.productType === ProductType.MULTIPLE_SIZES
+                ? handleClickOpen
+                : () => handleAddToCart(undefined, 1)
+            }
+          >
             <AddCircleIcon fontSize="large" />
           </IconButton>
         </Box>
@@ -85,6 +128,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isHorizontal = false
       <CardContent
         sx={{
           flex: 1,
+          minWidth: 0,
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'space-between',
@@ -92,7 +136,9 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isHorizontal = false
         }}
       >
         <Box>
-          <Typography variant="h6" fontWeight="bold">{product.name}</Typography>
+          <Typography variant="h6" fontWeight="bold">
+            {capitalizeFirstLetter(product.name)}
+          </Typography>
           <Typography variant="body2" sx={{ color: 'text.secondary' }}>
             {product.productType === ProductType.SINGLE_PRICE
               ? `${product.basePrice?.toFixed(2)} €`
@@ -105,10 +151,25 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isHorizontal = false
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
+              minWidth: 0,
             }}
           >
             {product.description}
           </Typography>
+          {/* Statistiques commandes/likes */}
+          {stats && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <LikeIcon sx={{ fontSize: 'small', }} />
+                <Typography variant="caption" color="primary">
+                  {stats.likePercentage}%
+                </Typography>
+              </Box>
+              <Typography variant="caption" color="text.secondary">
+                ({stats.totalOrders})
+              </Typography>
+            </Box>
+          )}
         </Box>
       </CardContent>
       {product.productType === ProductType.MULTIPLE_SIZES && (
