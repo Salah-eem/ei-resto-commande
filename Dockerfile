@@ -22,6 +22,7 @@ COPY frontend ./frontend
 
 # Builder le backend
 WORKDIR /app/backend
+RUN npm install -g @nestjs/cli
 RUN npm run build
 
 # Builder le frontend
