@@ -9,11 +9,11 @@ COPY frontend/package*.json ./frontend/
 
 # Installer les dépendances backend
 WORKDIR /app/backend
-RUN npm install --production
+RUN npm install
 
 # Installer les dépendances frontend
 WORKDIR /app/frontend
-RUN npm install --production
+RUN npm install
 
 # Copier tout le code
 WORKDIR /app
