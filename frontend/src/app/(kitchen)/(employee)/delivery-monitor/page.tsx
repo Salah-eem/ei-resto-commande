@@ -1,4 +1,5 @@
 "use client";
+export const dynamic = "force-dynamic";
 
 import React, { useEffect, useState } from "react";
 import {
@@ -14,27 +15,25 @@ import {
   ListItem,
   CircularProgress,
   Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from "@mui/material";
-import {
-  MapContainer,
-  TileLayer,
-  Marker,
-  Polyline,
-  Popup,
-  useMap,
-} from "react-leaflet";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
+import loadDynamic from "next/dynamic";
+
 import { Order, OrderStatus } from "@/types/order";
 import { useAppDispatch, useAppSelector } from "@/store/slices/hooks";
 import { RootState } from "@/store/store";
 import { fetchRestaurantInfo } from "@/store/slices/restaurantSlice";
 import { fetchDeliveryOrders, updateOrder } from "@/store/slices/orderSlice";
-import Dialog from "@mui/material/Dialog";
-import DialogTitle from "@mui/material/DialogTitle";
-import DialogContent from "@mui/material/DialogContent";
-import DialogActions from "@mui/material/DialogActions";
 
+// Import dynamique du composant de carte (Leaflet)
+const DeliveryMap = loadDynamic(() => import("@/components/DeliveryMap"), {
+  ssr: false,
+});
+
+// Fonction simulée de récupération de route (à remplacer par l’API ORS si besoin)
 // Fetch route using openrouteservice (same as client tracking)
 async function fetchRoute(start: [number, number], end: [number, number]) {
   /*try {
@@ -141,17 +140,6 @@ async function fetchRoute(start: [number, number], end: [number, number]) {
   });
 }
 
-// Composant pour ajuster la vue sur le trajet
-function FitRouteBounds({ routeCoords }: { routeCoords: [number, number][] }) {
-  const map = useMap();
-  React.useEffect(() => {
-    if (routeCoords.length > 1) {
-      map.fitBounds(routeCoords);
-    }
-  }, [routeCoords, map]);
-  return null;
-}
-
 export default function DeliveryMonitorPage() {
   const dispatch = useAppDispatch();
   const { orders, loading, error } = useAppSelector(
@@ -159,6 +147,7 @@ export default function DeliveryMonitorPage() {
   );
   const { restaurantAddress } = useAppSelector((s: RootState) => s.restaurant);
   const user = useAppSelector((state: RootState) => state.user.profile);
+
   const [statusFilter, setStatusFilter] = useState<OrderStatus>(
     OrderStatus.READY_FOR_DELIVERY
   );
@@ -167,14 +156,11 @@ export default function DeliveryMonitorPage() {
   const [restaurantPos, setRestaurantPos] = useState<[number, number] | null>(
     null
   );
-  const [clientPos, setClientPos] = useState<[number, number] | null>(null);
   const [routeCoords, setRouteCoords] = useState<[number, number][]>([]);
-  // Dialog state
   const [orderDialogOpen, setOrderDialogOpen] = useState(false);
   const [loadingGo, setLoadingGo] = useState(false);
   const [errorGo, setErrorGo] = useState<string | null>(null);
 
-  // load restaurant info once
   useEffect(() => {
     dispatch(fetchRestaurantInfo() as any);
     dispatch(fetchDeliveryOrders() as any);
@@ -182,11 +168,7 @@ export default function DeliveryMonitorPage() {
 
   useEffect(() => {
     if (restaurantAddress) {
-      const r: [number, number] = [
-        restaurantAddress.lat,
-        restaurantAddress.lng,
-      ];
-      setRestaurantPos(r);
+      setRestaurantPos([restaurantAddress.lat, restaurantAddress.lng]);
     }
     if (selectedOrder && restaurantAddress) {
       const r: [number, number] = [
@@ -197,25 +179,9 @@ export default function DeliveryMonitorPage() {
         selectedOrder.deliveryAddress!.lat,
         selectedOrder.deliveryAddress!.lng,
       ];
-      setClientPos(c);
-      // fetchRoute(r, c).then(setRouteCoords);
       fetchRoute(r, c).then((geojson) => {
-        if (
-          geojson &&
-          geojson.features &&
-          geojson.features[0] &&
-          geojson.features[0].geometry &&
-          geojson.features[0].geometry.coordinates
-        ) {
-          setRouteCoords(
-            geojson.features[0].geometry.coordinates.map((c: any) => [
-              c[1],
-              c[0],
-            ])
-          );
-        } else {
-          setRouteCoords([]);
-        }
+        const coords = geojson?.features?.[0]?.geometry?.coordinates || [];
+        setRouteCoords(coords.map((c: any) => [c[1], c[0]]));
       });
     } else {
       setRouteCoords([]);
@@ -224,14 +190,13 @@ export default function DeliveryMonitorPage() {
 
   useEffect(() => {
     if (orders) {
-      const filtered = orders.filter((o) => o.orderStatus === statusFilter);
-      setFilteredOrders(filtered);
+      setFilteredOrders(orders.filter((o) => o.orderStatus === statusFilter));
     }
   }, [orders, statusFilter]);
 
   const handleStatusChange = (status: OrderStatus) => {
     setStatusFilter(status);
-    setSelectedOrder(null); // Reset selection when changing status
+    setSelectedOrder(null);
   };
 
   const handleGoNow = async () => {
@@ -251,20 +216,22 @@ export default function DeliveryMonitorPage() {
       );
       setOrderDialogOpen(false);
       dispatch(fetchDeliveryOrders() as any);
-      // Ouvre Google Maps avec l'itinéraire vers l'adresse de livraison
-      if (selectedOrder.deliveryAddress && restaurantAddress) {
+
+      if (
+        selectedOrder.deliveryAddress &&
+        restaurantAddress &&
+        typeof window !== "undefined"
+      ) {
         const from = encodeURIComponent(
           `${restaurantAddress.street} ${restaurantAddress.streetNumber}, ${restaurantAddress.city} ${restaurantAddress.postalCode}, ${restaurantAddress.country}`
         );
         const to = encodeURIComponent(
           `${selectedOrder.deliveryAddress.street} ${selectedOrder.deliveryAddress.streetNumber}, ${selectedOrder.deliveryAddress.city} ${selectedOrder.deliveryAddress.postalCode}, ${selectedOrder.deliveryAddress.country}`
         );
-        if (typeof window !== "undefined") {
-          window.open(
-            `https://www.google.com/maps/dir/?api=1&origin=${from}&destination=${to}`,
-            "_blank"
-          );
-        }
+        window.open(
+          `https://www.google.com/maps/dir/?api=1&origin=${from}&destination=${to}`,
+          "_blank"
+        );
       }
     } catch (e: any) {
       setErrorGo(e?.message || "Erreur lors de la prise en charge.");
@@ -285,6 +252,7 @@ export default function DeliveryMonitorPage() {
       </Box>
     );
   }
+
   if (error) {
     return (
       <Box
@@ -326,15 +294,15 @@ export default function DeliveryMonitorPage() {
             </MenuItem>
           </Select>
         </FormControl>
-        {loading ? (
-          <Box
-            flex={1}
-            display="flex"
-            alignItems="center"
-            justifyContent="center"
+        {filteredOrders.length === 0 ? (
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            textAlign="center"
+            mt={4}
           >
-            <CircularProgress />
-          </Box>
+            Aucune commande trouvée.
+          </Typography>
         ) : (
           <List sx={{ flex: 1, overflowY: "auto" }}>
             {filteredOrders.map((order) => (
@@ -357,36 +325,30 @@ export default function DeliveryMonitorPage() {
                       gutterBottom
                     >
                       {order.scheduledFor
-                        ? `${new Date(order.scheduledFor).toLocaleTimeString()}`
-                        : `${new Date(order.createdAt).toLocaleTimeString()}`}
+                        ? new Date(order.scheduledFor).toLocaleTimeString()
+                        : new Date(order.createdAt).toLocaleTimeString()}
                     </Typography>
                     <Typography variant="body1" fontWeight={600} gutterBottom>
-                      {order.deliveryAddress!.street +
-                        " " +
-                        order.deliveryAddress!.streetNumber || "No address"}
+                      {order.deliveryAddress?.street}{" "}
+                      {order.deliveryAddress?.streetNumber}
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
-                      Driver: {order.deliveryDriver?.firstName || ""}
+                      Driver: {order.deliveryDriver?.firstName || "—"}
                     </Typography>
-                    {/* BOUTON GO */}
                     {selectedOrder &&
+                      selectedOrder._id === order._id &&
                       selectedOrder.orderStatus ===
                         OrderStatus.READY_FOR_DELIVERY && (
-                        <Box
-                          position="absolute"
-                          top={24}
-                          right={24}
-                          zIndex={1000}
-                        >
+                        <Box mt={1}>
                           <Button
                             variant="contained"
                             color="success"
-                            size="large"
+                            size="small"
                             onClick={() => setOrderDialogOpen(true)}
                             disabled={loadingGo}
                           >
                             {loadingGo ? (
-                              <CircularProgress size={24} color="inherit" />
+                              <CircularProgress size={20} color="inherit" />
                             ) : (
                               "Go"
                             )}
@@ -402,64 +364,18 @@ export default function DeliveryMonitorPage() {
                 </Card>
               </ListItem>
             ))}
-            {orders.length === 0 && (
-              <Typography
-                variant="body2"
-                color="text.secondary"
-                textAlign="center"
-                mt={4}
-              >
-                Aucune commande trouvée.
-              </Typography>
-            )}
           </List>
         )}
       </Box>
+
       {/* Map */}
       <Box flex={1} position="relative">
         {restaurantPos ? (
-          <MapContainer
-            center={
-              selectedOrder && routeCoords.length > 1
-                ? [
-                    (restaurantPos[0] + selectedOrder.deliveryAddress!.lat) / 2,
-                    (restaurantPos[1] + selectedOrder.deliveryAddress!.lng) / 2,
-                  ]
-                : [restaurantPos[0], restaurantPos[1]]
-            }
-            zoom={selectedOrder && routeCoords.length > 1 ? 13 : 16}
-            style={{ height: "100vh", width: "100%" }}
-          >
-            <TileLayer url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" />
-            <Marker
-              position={[restaurantPos[0], restaurantPos[1]]}
-              icon={
-                new L.Icon({
-                  iconUrl: "/logo.png",
-                  iconSize: [40, 40],
-                  iconAnchor: [20, 20],
-                })
-              }
-            >
-              <Popup>Restaurant</Popup>
-            </Marker>
-            {selectedOrder && (
-              <Marker
-                position={[
-                  selectedOrder.deliveryAddress!.lat,
-                  selectedOrder.deliveryAddress!.lng,
-                ]}
-              >
-                <Popup>Livraison</Popup>
-              </Marker>
-            )}
-            {selectedOrder && routeCoords.length > 1 && (
-              <>
-                <Polyline positions={routeCoords} weight={4} color="#1976d2" />
-                <FitRouteBounds routeCoords={routeCoords} />
-              </>
-            )}
-          </MapContainer>
+          <DeliveryMap
+            restaurantPos={restaurantPos}
+            selectedOrder={selectedOrder}
+            routeCoords={routeCoords}
+          />
         ) : (
           <Box
             display="flex"
@@ -473,7 +389,7 @@ export default function DeliveryMonitorPage() {
           </Box>
         )}
 
-        {/* DIALOG personnalisé */}
+        {/* DIALOG */}
         {selectedOrder && (
           <Dialog
             open={orderDialogOpen}
@@ -487,39 +403,23 @@ export default function DeliveryMonitorPage() {
                 alignItems="center"
                 justifyContent="space-between"
               >
-                <span>{`Order : #${selectedOrder._id.slice(0, 4)}`}</span>
+                <span>Commande #{selectedOrder._id.slice(0, 4)}</span>
                 <Button
                   onClick={() => setOrderDialogOpen(false)}
-                  sx={{
-                    minWidth: 0,
-                    p: 1,
-                    color: "#607d8b",
-                    "&:hover": { color: "#d32f2f", background: "transparent" },
-                  }}
+                  sx={{ fontSize: 28 }}
                 >
-                  <span
-                    style={{ fontSize: 28, fontWeight: "bold", lineHeight: 1 }}
-                  >
-                    &times;
-                  </span>
+                  &times;
                 </Button>
               </Box>
             </DialogTitle>
             <DialogContent dividers>
               <List>
                 {selectedOrder.items.map((item, idx) => (
-                  <ListItem key={item._id || idx} sx={{ px: 0 }}>
-                    <Box>
-                      <Typography fontWeight="bold">
-                        {" "}
-                        {item.quantity} × {item.name + " "}
-                        {item.size && (
-                          <Typography variant="caption" color="text.secondary">
-                            ({item.size})
-                          </Typography>
-                        )}
-                      </Typography>
-                    </Box>
+                  <ListItem key={idx}>
+                    <Typography>
+                      {item.quantity} × {item.name}{" "}
+                      {item.size && <span>({item.size})</span>}
+                    </Typography>
                   </ListItem>
                 ))}
               </List>
