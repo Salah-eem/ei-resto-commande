@@ -227,46 +227,42 @@ export class OrderService implements OnModuleInit {
           },
         },
       })
+      .populate({
+        path: 'userId',
+        model: 'User',
+        select: 'firstName phone',
+      })
       .lean();
-
-    // Séparer selon que userId soit un ObjectId valide
-    const isValidId = Types.ObjectId.isValid;
-    const withOid   = allOrders.filter(o => o.userId && isValidId(o.userId.toString()));
-    const populated  = await this.orderModel
-      .find({ _id: { $in: withOid.map(o => o._id) } })
-      .populate('userId', 'firstName phone')
-      .select('_id userId')
-      .lean();
-
-    const userMap = new Map<string, any>(
-      populated.map(o => [o._id.toString(), o.userId]),
-    );
 
     return allOrders.map(order => {
-      const u = userMap.get(order._id.toString()) as any;
-      // Ajout des items enrichis
-      const items = (order.items as any[]).map(oi => {
-        const prod = oi.productId as any;
-        let computedPrice = oi.price;
-        if (prod.productType === 'multiple_sizes' && prod.sizes) {
-          const sizeMatch = prod.sizes.find((s: any) => s.name === oi.size);
-          if (sizeMatch) computedPrice = sizeMatch.price;
-        } else if (prod.productType === 'single_price' && prod.basePrice != null) {
-          computedPrice = prod.basePrice;
-        }
-        return {
-          _id: oi._id,
-          productId: prod._id,
-          name: prod.name,
-          price: computedPrice,
-          quantity: oi.quantity,
-          size: oi.size,
-          image_url: prod.image_url,
-          category: prod.category,
-          preparedQuantity: oi.preparedQuantity ?? 0,
-          isPrepared: oi.isPrepared ?? false,
-        };
-      });
+      const customerData = {
+        name:  (order.userId as any)?.firstName  ?? order.customer?.name,
+        phone: (order.userId as any)?.phone      ?? order.customer?.phone,
+      };
+      const items = (order.items as any[])
+        .filter(oi => oi.productId) // Ne garder que les items avec produit peuplé
+        .map(oi => {
+          const prod = oi.productId as any;
+          let computedPrice = oi.price;
+          if (prod.productType === 'multiple_sizes' && prod.sizes) {
+            const sizeMatch = prod.sizes.find((s: any) => s.name === oi.size);
+            if (sizeMatch) computedPrice = sizeMatch.price;
+          } else if (prod.productType === 'single_price' && prod.basePrice != null) {
+            computedPrice = prod.basePrice;
+          }
+          return {
+            _id: oi._id,
+            productId: prod._id,
+            name: prod.name,
+            price: computedPrice,
+            quantity: oi.quantity,
+            size: oi.size,
+            image_url: prod.image_url,
+            category: prod.category,
+            preparedQuantity: oi.preparedQuantity ?? 0,
+            isPrepared: oi.isPrepared ?? false,
+          };
+        });
       return {
         _id:             order._id,
         source:          order.source,
@@ -277,10 +273,7 @@ export class OrderService implements OnModuleInit {
         orderType:       order.orderType,
         createdAt:       order.createdAt,
         deliveryAddress: order.deliveryAddress,
-        customer: {
-          name:  u?.firstName ?? order.customer?.name,
-          phone: u?.phone     ?? order.customer?.phone,
-        },
+        customer:        customerData,
         items,
       };
     });
