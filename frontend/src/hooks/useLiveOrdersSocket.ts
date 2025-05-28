@@ -11,7 +11,7 @@ export default function useLiveOrdersSocket() {
   const dispatch = useAppDispatch(); 
 
   useEffect(() => {
-    socket = io(process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3001', {
+    socket = io(process.env.NEXT_PUBLIC_API_URL, {
       transports: ['websocket'],
     })
 
