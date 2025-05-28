@@ -677,7 +677,8 @@ export class OrderService implements OnModuleInit {
 
 /** Récupère et transforme une commande avec détails client & produits */
   private async _fetchSingleOrderWithCustomer(id: string): Promise<any> {
-    const order = await this.orderModel
+    // On récupère la commande sans peupler userId dans un premier temps
+    let order = await this.orderModel
       .findById(id)
       .populate({
         path: 'items',
@@ -693,20 +694,21 @@ export class OrderService implements OnModuleInit {
           },
         },
       })
-      .populate({
-        path: 'userId',
-        model: 'User',
-        select: 'firstName phone',
-      })
       .lean();
 
     if (!order) {
       throw new NotFoundException('Order not found');
     }
 
+    // Si userId est un ObjectId valide, on peuple les infos utilisateur
+    let user: any = null;
+    if (order.userId && Types.ObjectId.isValid(order.userId.toString())) {
+      user = await this.orderModel.db.collection('users').findOne({ _id: this.toObjectId(order.userId) }, { projection: { firstName: 1, phone: 1 } });
+    }
+
     const customerData = {
-      name:  (order.userId as any)?.firstName  ?? order.customer?.name,
-      phone: (order.userId as any)?.phone      ?? order.customer?.phone,
+      name:  user?.firstName ?? order.customer?.name,
+      phone: user?.phone     ?? order.customer?.phone,
     };
 
     const items = (order.items as any[]).map(oi => {
