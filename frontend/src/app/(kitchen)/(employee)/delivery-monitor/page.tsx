@@ -259,10 +259,12 @@ export default function DeliveryMonitorPage() {
         const to = encodeURIComponent(
           `${selectedOrder.deliveryAddress.street} ${selectedOrder.deliveryAddress.streetNumber}, ${selectedOrder.deliveryAddress.city} ${selectedOrder.deliveryAddress.postalCode}, ${selectedOrder.deliveryAddress.country}`
         );
-        window.open(
-          `https://www.google.com/maps/dir/?api=1&origin=${from}&destination=${to}`,
-          "_blank"
-        );
+        if (typeof window !== "undefined") {
+          window.open(
+            `https://www.google.com/maps/dir/?api=1&origin=${from}&destination=${to}`,
+            "_blank"
+          );
+        }
       }
     } catch (e: any) {
       setErrorGo(e?.message || "Erreur lors de la prise en charge.");
