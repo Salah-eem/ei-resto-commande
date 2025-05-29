@@ -58,6 +58,25 @@ export class UserService {
     return await this.userModel.create(dto);
   }
 
+  async createByAdmin(dto: UserDto): Promise<UserDto> {
+    const userWithFullName = await this.findByFullName(
+      dto.firstName,
+      dto.lastName,
+    );
+    if (userWithFullName) {
+      throw new BadRequestException(
+        'The combination of firstName and lastName must be unique.',
+      );
+    }
+    const userWithEmail = await this.findByEmail(dto.email);
+    if (userWithEmail) {
+      throw new BadRequestException('Email must be unique.');
+    }
+    const saltOrRounds = 10;
+    dto.password = await bcrypt.hash(dto.password, saltOrRounds);
+    return await this.userModel.create(dto);
+  }
+
   async update(id: string, dto: UpdateUserDto): Promise<UserDto | null> {
     if (dto.firstName && dto.lastName) {
       const existing = await this.userModel.findOne({

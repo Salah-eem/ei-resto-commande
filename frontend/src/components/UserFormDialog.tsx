@@ -12,25 +12,8 @@ interface UserFormDialogProps {
   onClose: () => void;
   onSubmit: (user: Partial<User>) => void;
   initialUser?: Partial<User>;
+  error?: string | string[] | null;
 }
-
-const validationSchema = yup.object({
-  firstName: yup.string().required('First name is required').min(3, 'First name must be at least 3 characters'),
-  lastName: yup.string().required('Last name is required').min(3, 'Last name must be at least 3 characters'),
-  email: yup.string().email('Invalid email').required('Email is required'),
-  password: yup.string()
-    .min(8, 'Password must be at least 8 characters')
-    .matches(/[0-9]/, 'Password must contain at least one digit')
-    .matches(/[A-Z]/, 'Password must contain at least one uppercase letter')
-    .matches(/[!@#$%^&*(),.?":{}|<>\[\]\\/;'`~]/, 'Password must contain at least one special character')
-    .when('$isNew', {
-      is: true,
-      then: schema => schema.required('Password is required'),
-      otherwise: schema => schema.notRequired(),
-    }),
-  phone: yup.string(),
-  role: yup.number().oneOf([Role.Admin, Role.Employee, Role.Client]),
-});
 
 const checkEmailUnique = async (email: string, userId?: string) => {
   try {
@@ -50,11 +33,35 @@ const checkFullNameUnique = async (firstName: string, lastName: string, userId?:
   }
 };
 
-const UserFormDialog: React.FC<UserFormDialogProps> = ({ open, onClose, onSubmit, initialUser }) => {
-  const isNew = !initialUser?._id;
+const UserFormDialog: React.FC<UserFormDialogProps> = ({ open, onClose, onSubmit, initialUser, error }) => {
+  // Correction : isNew doit être true uniquement si initialUser est absent ou n'a pas d'_id
+  const isNew = !initialUser || !initialUser._id;
   const [emailUniqueError, setEmailUniqueError] = React.useState<string | null>(null);
   const [fullNameUniqueError, setFullNameUniqueError] = React.useState<string | null>(null);
   const debounceRef = React.useRef<{ email?: NodeJS.Timeout; name?: NodeJS.Timeout }>({});
+
+  // Déclaration locale du schéma de validation pour utiliser le contexte à chaque rendu
+  const validationSchema = yup.object({
+    firstName: yup.string().required('First name is required').min(3, 'First name must be at least 3 characters'),
+    lastName: yup.string().required('Last name is required').min(3, 'Last name must be at least 3 characters'),
+    email: yup.string().email('Invalid email').required('Email is required'),
+    password: yup.string()
+      .when('$isNew', {
+        is: true,
+        then: schema => schema.required('Password is required')
+          .min(8, 'Password must be at least 8 characters')
+          .matches(/[0-9]/, 'Password must contain at least one digit')
+          .matches(/[A-Z]/, 'Password must contain at least one uppercase letter')
+          .matches(/[!@#$%^&*(),.?":{}|<>\[\]\\;'`~]/, 'Password must contain at least one special character'),
+        otherwise: schema => schema.notRequired()
+          .test('min', 'Password must be at least 8 characters', value => !value || value.length >= 8)
+          .test('digit', 'Password must contain at least one digit', value => !value || /[0-9]/.test(value))
+          .test('upper', 'Password must contain at least one uppercase letter', value => !value || /[A-Z]/.test(value))
+          .test('special', 'Password must contain at least one special character', value => !value || /[!@#$%^&*(),.?":{}|<>\[\]\\;'`~]/.test(value)),
+      }),
+    phone: yup.string(),
+    role: yup.number().oneOf([Role.Admin, Role.Employee, Role.Client]),
+  });
 
   const formik = useFormik({
     initialValues: {
@@ -66,10 +73,20 @@ const UserFormDialog: React.FC<UserFormDialogProps> = ({ open, onClose, onSubmit
       role: initialUser?.role ?? Role.Client,
     },
     enableReinitialize: true,
-    validationSchema: validationSchema, // @ts-ignore
-    validationContext: { isNew },
+    // On retire validationSchema et on utilise validate pour injecter le contexte à chaque validation
     validate: async (values) => {
       const errors: Record<string, string> = {};
+      try {
+        await validationSchema.validate(values, { context: { isNew }, abortEarly: false });
+      } catch (err: any) {
+        if (err.inner) {
+          err.inner.forEach((validationError: any) => {
+            if (validationError.path) {
+              errors[validationError.path] = validationError.message;
+            }
+          });
+        }
+      }
       // Email uniqueness
       if (emailUniqueError) errors.email = emailUniqueError;
       // Full name uniqueness
@@ -127,6 +144,17 @@ const UserFormDialog: React.FC<UserFormDialogProps> = ({ open, onClose, onSubmit
       <form onSubmit={formik.handleSubmit}>
         <DialogTitle>{initialUser?._id ? 'Edit user' : 'Add user'}</DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 350 }}>
+          {/* Affichage des erreurs backend Redux */}
+          {error && (
+            <Box sx={{ mb: 1 }}>
+              {Array.isArray(error)
+                ? error.map((msg, i) => (
+                    <Typography color="error" key={i}>{msg}</Typography>
+                  ))
+                : <Typography color="error">{error}</Typography>
+              }
+            </Box>
+          )}
           <TextField label="First Name" name="firstName" value={formik.values.firstName} onChange={formik.handleChange} onBlur={formik.handleBlur} error={!!(formik.touched.firstName && (formik.errors.firstName || fullNameUniqueError))} helperText={formik.touched.firstName && (formik.errors.firstName || fullNameUniqueError)} sx={{ mt: 2 }} />
           <TextField label="Last Name" name="lastName" value={formik.values.lastName} onChange={formik.handleChange} onBlur={formik.handleBlur} error={!!(formik.touched.lastName && !!formik.errors.lastName)} helperText={formik.touched.lastName && formik.errors.lastName} />
           <TextField label="Email" name="email" value={formik.values.email} onChange={formik.handleChange} onBlur={formik.handleBlur} error={!!(formik.touched.email && (formik.errors.email || emailUniqueError))} helperText={formik.touched.email && (formik.errors.email || emailUniqueError)} type="email" />
