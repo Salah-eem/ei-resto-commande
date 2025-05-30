@@ -19,7 +19,11 @@ export class ProductService {
   ) {}
 
   async getAll(): Promise<Product[]> {
-    return await this.productModel.find().populate('category').exec();
+    return await this.productModel
+      .find()
+      .populate('category')
+      .populate({ path: 'ingredients', model: 'Ingredient' })
+      .exec();
   }
 
   async create(dto: CreateUpdateProductDto) {

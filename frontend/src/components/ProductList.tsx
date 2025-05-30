@@ -10,16 +10,20 @@ import CategoryNav from "./CategoryNav";
 import { Category } from "@/types/category";
 import { Product } from "@/types/product";
 import api from "@/lib/api";
+import { useAppDispatch, useAppSelector } from "@/store/slices/hooks";
+import { fetchIngredients } from "@/store/slices/ingredientSlice";
 
 const ProductList: React.FC = () => {
-  const dispatch = useDispatch();
-  const { items: products, loading: loadingProducts, error: errorProducts } = useSelector(
+  const dispatch = useAppDispatch();
+  const { items: products, loading: loadingProducts, error: errorProducts } = useAppSelector(
     (state: RootState) => state.products
   );
-  const { items: categories, loading: loadingCategories, error: errorCategories } = useSelector(
+  const { items: categories, loading: loadingCategories, error: errorCategories } = useAppSelector(
     (state: RootState) => state.categories
   );
-  const { stats: productStats } = useSelector((state: RootState) => state.products);
+  const { stats: productStats } = useAppSelector((state: RootState) => state.products);
+  const allIngredients = useAppSelector((state) => state.ingredients.items);
+
 
   // Crée un objet ref pour chaque catégorie
   const categoryRefs = useRef<Record<string, HTMLDivElement | null>>({} as Record<string, HTMLDivElement | null>);
@@ -31,6 +35,9 @@ const ProductList: React.FC = () => {
     }
     if (categories.length === 0) {
       dispatch(fetchCategories() as any);
+    }
+    if (allIngredients.length === 0) {
+      dispatch(fetchIngredients() as any);
     }
     dispatch(fetchProductStats() as any);
   }, [dispatch, products.length, categories.length]);

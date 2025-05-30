@@ -85,4 +85,8 @@ export class CreateUpdateProductDto {
   @ValidateNested({ each: true })
   @Type(() => SizeDto)
   readonly sizes?: SizeDto[];
+
+  @IsOptional()
+  @IsArray()
+  readonly ingredients?: string[];
 }
