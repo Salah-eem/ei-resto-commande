@@ -39,6 +39,11 @@ export class CreateUpdateIngredientDto {
 
     @IsOptional()
     @IsNumber()
+    @IsPositive()
+    quantity?: number | null;
+
+    @IsOptional()
+    @IsNumber()
     stock?: number | null;
 
     @IsOptional()

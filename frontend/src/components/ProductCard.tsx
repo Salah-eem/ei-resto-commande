@@ -6,9 +6,11 @@ import LikeIcon from '@mui/icons-material/ThumbUpAltOutlined';
 import { useDispatch, useSelector } from 'react-redux';
 import { addToCart } from '@/store/slices/cartSlice';
 import { Product, ProductType } from '@/types/product';
+import { Ingredient } from '@/types/ingredient';
 import SizeDialog from './SizeDialog';
 import { RootState } from '@/store/store';
 import { capitalizeFirstLetter } from '@/utils/functions.utils';
+import { IngredientWithQuantity } from '@/types/cartItem';
 
 interface ProductStats {
   productId: string;
@@ -33,13 +35,24 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isHorizontal = false
   const handleClickOpen = () => setOpenDialog(true);
   const handleCloseDialog = () => setOpenDialog(false);
 
-  const handleConfirmSize = (size: string, quantity: number) => {
+  const handleConfirmSize = (size: string, quantity: number, baseIngredients: IngredientWithQuantity[], ingredients: IngredientWithQuantity[]) => {
     setSelectedSize(size);
-    handleAddToCart(size, quantity);
+    // Utilise la quantité réelle reçue pour chaque ingrédient, et conserve la référence ingredient
+    const baseWithQty: IngredientWithQuantity[] = (baseIngredients || []).map(ing => ({
+      _id: ing._id,
+      quantity: ing.quantity ?? 1,
+      ingredient: ing.ingredient ?? undefined,
+    }));
+    const ingWithQty: IngredientWithQuantity[] = (ingredients || []).map(ing => ({
+      _id: ing._id,
+      quantity: ing.quantity ?? 1,
+      ingredient: ing.ingredient ?? undefined,
+    }));
+    handleAddToCart(size, quantity, baseWithQty, ingWithQty);
     handleCloseDialog();
   };
 
-  const handleAddToCart = (size?: string, quantity: number = 1) => {
+  const handleAddToCart = (size?: string, quantity: number = 1, baseIngredients?: IngredientWithQuantity[], ingredients?: IngredientWithQuantity[]) => {
     if (!userId) return;
 
     const cartItem = {
@@ -55,6 +68,16 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isHorizontal = false
         size: size || undefined,
         image_url: product.image_url,
         category: product.category,
+        baseIngredients: (baseIngredients ?? []).map(ing => ({
+          _id: ing._id,
+          quantity: ing.quantity ?? 1,
+          ingredient: ing.ingredient ?? undefined,
+        })),
+        ingredients: (ingredients ?? []).map(ing => ({
+          _id: ing._id,
+          quantity: ing.quantity ?? 1,
+          ingredient: ing.ingredient ?? undefined,
+        })),
       },
     };
 

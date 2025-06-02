@@ -2,7 +2,6 @@ import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import { CartItem } from "@/types/cartItem";
 import api from "@/lib/api";
 
-
 interface CartState {
   items: CartItem[];
   loading: boolean;
@@ -16,24 +15,50 @@ const initialState: CartState = {
 };
 
 // 📌 Récupérer le panier
-export const fetchCart = createAsyncThunk("cart/fetchCart", async (userId: string, { rejectWithValue }) => {
-  try {
-    const response = await api.get(`/cart/${userId}`);
-    return response.data.items;
-  } catch (error: any) {
-    return rejectWithValue(error.response?.data?.message || "Erreur lors du chargement du panier.");
+export const fetchCart = createAsyncThunk(
+  "cart/fetchCart",
+  async (userId: string, { rejectWithValue }) => {
+    try {
+      const response = await api.get(`/cart/${userId}`);
+      return response.data.items as CartItem[];
+    } catch (error: any) {
+      return rejectWithValue(
+        error.response?.data?.message || "Erreur lors du chargement du panier."
+      );
+    }
   }
-});
+);
 
 // 📌 Ajouter un produit au panier
 export const addToCart = createAsyncThunk(
   "cart/addToCart",
-  async ({ userId, item }: { userId: string; item: CartItem }, { rejectWithValue }) => {
+  async (
+    {
+      userId,
+      item,
+    }: { userId: string; item: CartItem },
+    { rejectWithValue }
+  ) => {
     try {
-      const response = await api.post(`/cart/${userId}/add`, item);
-      return response.data.items;
+      // S’assurer que chaque ingrédient a bien un champ quantity
+      const itemWithQty = {
+        ...item,
+        baseIngredients: (item.baseIngredients || []).map((ing) => ({
+          ...ing,
+          quantity: ing.quantity ?? 1,
+        })),
+        ingredients: (item.ingredients || []).map((ing) => ({
+          ...ing,
+          quantity: ing.quantity ?? 1,
+        })),
+      };
+      const response = await api.post(`/cart/${userId}/add`, itemWithQty);
+      return response.data.items as CartItem[];
     } catch (error: any) {
-      return rejectWithValue(error.response?.data?.message || "Erreur lors de l'ajout du produit au panier.");
+      return rejectWithValue(
+        error.response?.data?.message ||
+          "Erreur lors de l'ajout du produit au panier."
+      );
     }
   }
 );
@@ -41,44 +66,82 @@ export const addToCart = createAsyncThunk(
 // 📌 Modifier la quantité d’un produit
 export const updateCartQuantity = createAsyncThunk(
   "cart/updateCartQuantity",
-  async ({ userId, productId, size, quantity }: { userId: string; productId: string; size?: string; quantity: number }, { rejectWithValue }) => {
+  async (
+    {
+      userId,
+      productId,
+      size,
+      quantity,
+      ingredients,
+    }: {
+      userId: string;
+      productId: string;
+      size?: string;
+      quantity: number;
+      ingredients?: any[];
+    },
+    { rejectWithValue }
+  ) => {
     try {
+      // S’assurer que chaque ingrédient a bien un champ quantity
+      const ingredientsWithQty = (ingredients || []).map((ing) => ({
+        ...ing,
+        quantity: ing.quantity ?? 1,
+      }));
       const response = await api.patch(`/cart/${userId}/update`, {
         productId,
         size,
         quantity,
+        ingredients: ingredientsWithQty,
       });
-      return response.data.items;
+      return response.data.items as CartItem[];
     } catch (error: any) {
-      return rejectWithValue(error.response?.data?.message || "Erreur lors de la mise à jour du produit.");
+      return rejectWithValue(
+        error.response?.data?.message || "Erreur lors de la mise à jour du produit."
+      );
     }
   }
 );
 
-// 📌 Supprimer un produit du panier
+// 📌 Supprimer un item du panier (on passe l’itemId)
 export const removeFromCart = createAsyncThunk(
   "cart/removeFromCart",
-  async ({ userId, productId, size }: { userId: string; productId: string; size?: string }, { rejectWithValue }) => {
+  async (
+    {
+      userId,
+      itemId,
+    }: {
+      userId: string;
+      itemId: string;
+    },
+    { rejectWithValue }
+  ) => {
     try {
-      const response = await api.delete(`/cart/${userId}/${productId}`, {
-        data: { size },
-      });
-      return response.data.items;
+      // Appelle maintenant DELETE /cart/:userId/item/:itemId
+      const response = await api.delete(`/cart/${userId}/item/${itemId}`);
+      return response.data.items as CartItem[];
     } catch (error: any) {
-      return rejectWithValue(error.response?.data?.message || "Erreur lors de la suppression du produit.");
+      return rejectWithValue(
+        error.response?.data?.message || "Erreur lors de la suppression du produit."
+      );
     }
   }
 );
 
 // 📌 Vider complètement le panier
-export const clearCart = createAsyncThunk("cart/clearCart", async (userId: string, { rejectWithValue }) => {
-  try {
-    await api.delete(`/cart/${userId}/clear`);
-    return [];
-  } catch (error: any) {
-    return rejectWithValue(error.response?.data?.message || "Erreur lors de la suppression du panier.");
+export const clearCart = createAsyncThunk(
+  "cart/clearCart",
+  async (userId: string, { rejectWithValue }) => {
+    try {
+      await api.delete(`/cart/${userId}/clear`);
+      return [] as CartItem[];
+    } catch (error: any) {
+      return rejectWithValue(
+        error.response?.data?.message || "Erreur lors de la suppression du panier."
+      );
+    }
   }
-});
+);
 
 const cartSlice = createSlice({
   name: "cart",
@@ -86,7 +149,9 @@ const cartSlice = createSlice({
   reducers: {},
   extraReducers: (builder) => {
     builder
+      // -------------------------
       // ✅ Récupération du panier
+      // -------------------------
       .addCase(fetchCart.pending, (state) => {
         state.loading = true;
         state.error = null;
@@ -100,7 +165,9 @@ const cartSlice = createSlice({
         state.error = action.payload as string;
       })
 
+      // -------------------------
       // ✅ Ajout d’un produit
+      // -------------------------
       .addCase(addToCart.pending, (state) => {
         state.loading = true;
         state.error = null;
@@ -114,7 +181,9 @@ const cartSlice = createSlice({
         state.error = action.payload as string;
       })
 
+      // --------------------------------
       // ✅ Mise à jour de la quantité
+      // --------------------------------
       .addCase(updateCartQuantity.pending, (state) => {
         state.loading = true;
         state.error = null;
@@ -128,7 +197,9 @@ const cartSlice = createSlice({
         state.error = action.payload as string;
       })
 
-      // ✅ Suppression d’un produit
+      // -------------------------
+      // ✅ Suppression d’un item
+      // -------------------------
       .addCase(removeFromCart.pending, (state) => {
         state.loading = true;
         state.error = null;
@@ -142,7 +213,9 @@ const cartSlice = createSlice({
         state.error = action.payload as string;
       })
 
+      // -----------------------------
       // ✅ Vider complètement le panier
+      // -----------------------------
       .addCase(clearCart.pending, (state) => {
         state.loading = true;
         state.error = null;

@@ -30,6 +30,8 @@ interface IngredientDialogProps {
   product?: Product;
   priceCalculator?: (selected: string[]) => number;
   onSave?: () => void;
+  crossedOut: { [id: string]: boolean };
+  setCrossedOut: React.Dispatch<React.SetStateAction<{ [id: string]: boolean }>>;
 }
 
 const IngredientDialog: React.FC<IngredientDialogProps> = ({
@@ -43,9 +45,11 @@ const IngredientDialog: React.FC<IngredientDialogProps> = ({
   product,
   priceCalculator,
   onSave,
+  crossedOut,
+  setCrossedOut,
 }) => {
-  const [crossedOut, setCrossedOut] = React.useState<{ [id: string]: boolean }>({});
-  const getQuantity = (id: string) => selectedExtras.filter((i) => i === id).length;
+  // Ajoute une fonction utilitaire pour savoir si un ingrédient de base est barré
+  const isCrossed = (id: string) => crossedOut[id] === true;
 
   return (
     <Dialog open={open} fullWidth maxWidth="xs">
@@ -70,17 +74,20 @@ const IngredientDialog: React.FC<IngredientDialogProps> = ({
             <Typography color="text.secondary">No ingredients available.</Typography>
           )}
           {allIngredients.map(ing => {
-            const quantity = getQuantity(ing._id);
-            const isCrossed = crossedOut[ing._id] || false;
-            const canBeCrossed = product?.ingredients?.some(i => i._id === ing._id) || false;
+            const isBase = product?.ingredients?.some(i => i._id === ing._id) || false;
+            const crossed = isCrossed(ing._id);
+            // Quantité calculée : 1 (de base) + nombre d'occurrences dans selectedExtras
+            const extraCount = selectedExtras.filter((i) => i === ing._id).length;
+            const quantity = crossed ? 0 : (isBase ? 1 : 0) + extraCount;
+            const canBeCrossed = isBase;
             return (
-              <Box key={ing._id} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 1, opacity: isCrossed ? 0.5 : 1 }}>
+              <Box key={ing._id} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 1, opacity: crossed ? 0.5 : 1 }}>
                 <Box>
-                  <Typography variant="body1" sx={isCrossed ? { textDecoration: 'line-through' } : {}}>{ing.name}</Typography>
-                  <Typography variant="caption" sx={isCrossed ? { textDecoration: 'line-through' } : {}}>+{ing.price?.toFixed(2) ?? '0.00'} €</Typography>
+                  <Typography variant="body1" sx={crossed ? { textDecoration: 'line-through' } : {}}>{ing.name}</Typography>
+                  <Typography variant="caption" sx={crossed ? { textDecoration: 'line-through' } : {}}>+{ing.price?.toFixed(2) ?? '0.00'} €</Typography>
                 </Box>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  {canBeCrossed && quantity === 0 && !isCrossed ? (
+                  {canBeCrossed && quantity === 1 && !crossed ? (
                     <IconButton
                       onClick={() => setCrossedOut(prev => ({ ...prev, [ing._id]: true }))}
                       sx={{ border: '1px solid #ddd', borderRadius: '50%', p: 0.5 }}
@@ -90,11 +97,12 @@ const IngredientDialog: React.FC<IngredientDialogProps> = ({
                       <CancelIcon sx={{ fontSize: 20 }} />
                     </IconButton>
                   ) : null}
-                  {(!canBeCrossed || quantity > 0) && (
+                  {(!canBeCrossed || quantity > (isBase ? 1 : 0)) && !crossed && (
                     <IconButton
                       onClick={() => {
-                        if (quantity > 0) {
-                          const idx = selectedExtras.findIndex(i => i === ing._id);
+                        if (quantity > (isBase ? 1 : 0)) {
+                          // Retire une occurrence de l'id dans selectedExtras (ne modifie pas ing)
+                          const idx = selectedExtras.lastIndexOf(ing._id);
                           if (idx !== -1) {
                             const newArr = [...selectedExtras];
                             newArr.splice(idx, 1);
@@ -103,20 +111,19 @@ const IngredientDialog: React.FC<IngredientDialogProps> = ({
                         }
                       }}
                       sx={{ border: '1px solid #ddd', borderRadius: '50%', p: 0.5 }}
-                      color={quantity > 0 ? 'error' : 'default'}
+                      color={quantity > (isBase ? 1 : 0) ? 'error' : 'default'}
                       aria-label="Remove"
-                      disabled={quantity === 0}
+                      disabled={quantity === (isBase ? 1 : 0)}
                     >
                       <RemoveIcon sx={{ fontSize: 20 }} />
                     </IconButton>
                   )}
                   <Typography sx={{ minWidth: 18, textAlign: 'center' }}>{quantity}</Typography>
-                  {(!isCrossed) ? (
+                  {!crossed ? (
                     <IconButton
                       onClick={() => {
                         if (quantity < 2) {
                           setSelectedExtras([...selectedExtras, ing._id]);
-                          if (isCrossed) setCrossedOut(prev => ({ ...prev, [ing._id]: false }));
                         }
                       }}
                       sx={{ border: '1px solid #ddd', borderRadius: '50%', p: 0.5 }}
@@ -138,7 +145,7 @@ const IngredientDialog: React.FC<IngredientDialogProps> = ({
                       <AddIcon sx={{ fontSize: 20 }} />
                     </IconButton>
                   )}
-                  </Box>
+                </Box>
               </Box>
             );
           })}
