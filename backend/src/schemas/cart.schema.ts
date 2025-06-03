@@ -1,19 +1,8 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
+import { IngredientWithQuantity, IngredientWithQuantitySchema } from './ingredient-with-quantity.schema';
 
 export type CartDocument = Cart & Document;
-
-// Subdocument for ingredient with quantity
-@Schema()
-export class IngredientWithQuantity {
-  @Prop({ type: Types.ObjectId, ref: 'Ingredient', required: true })
-  _id: Types.ObjectId;
-
-  @Prop({ type: Number, default: 1 })
-  quantity: number;
-}
-
-export const IngredientWithQuantitySchema = SchemaFactory.createForClass(IngredientWithQuantity);
 
 @Schema()
 export class CartItem {

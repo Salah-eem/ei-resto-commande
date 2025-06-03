@@ -35,248 +35,334 @@ export class OrderService implements OnModuleInit {
     @Inject(forwardRef(() => LiveOrdersGateway))
     private readonly liveOrdersGateway: LiveOrdersGateway,
     private readonly deliveryGateway: DeliveryGateway,
-    private schedulerRegistry: SchedulerRegistry,
+    private readonly schedulerRegistry: SchedulerRegistry,
   ) {}
 
-
   onModuleInit() {
-    // Arrête silencieusement le job s’il existe
     try {
       const job = this.schedulerRegistry.getCronJob('promoteScheduledOrders');
       job.stop();
-      // tu peux logger :
-      // this.logger.log('promoteScheduledOrders cron stopped at startup');
     } catch {
-      // pas encore enregistré ? on ignore
+      // ignore if not registered yet
     }
   }
 
+  // ----------------------------
+  // Common population definitions
+  // ----------------------------
+  private getOrderItemPopulate() {
+    return [
+      {
+        path: 'productId',
+        model: 'Product',
+        select: 'name image_url productType basePrice sizes category',
+        populate: {
+          path: 'category',
+          model: 'Category',
+          select: 'name',
+        },
+      },
+      {
+        path: 'baseIngredients._id',
+        model: 'Ingredient',
+        select: 'name price',
+      },
+      {
+        path: 'ingredients._id',
+        model: 'Ingredient',
+        select: 'name price',
+      },
+    ];
+  }
 
+  private getUserPopulate() {
+    return {
+      path: 'userId',
+      model: 'User',
+      select: 'firstName phone',
+    };
+  }
+
+  // -----------------------------------
+  // Map a populated ingredient → plain
+  // -----------------------------------
+  private mapIngredient(ing: any): {
+    _id: string;
+    name: string;
+    price: number;
+    quantity: number;
+  } {
+    const populated = (ing._id as any) || null;
+    return {
+      _id: (populated?._id || ing._id).toString(),
+      name: populated?.name || '',
+      price: populated?.price ?? ing.price ?? 0,
+      quantity: ing.quantity || 1,
+    };
+  }
+
+  // --------------------------------------
+  // Map a single OrderItem document → JSON
+  // --------------------------------------
+  private mapOrderItem(oi: any): any {
+    const prod = oi.productId as any;
+    let computedPrice = oi.price;
+    if (prod.productType === 'multiple_sizes' && Array.isArray(prod.sizes)) {
+      const sizeMatch = prod.sizes.find((s: any) => s.name === oi.size);
+      if (sizeMatch) computedPrice = sizeMatch.price;
+    } else if (prod.productType === 'single_price' && prod.basePrice != null) {
+      computedPrice = prod.basePrice;
+    }
+
+    const baseIngredients = Array.isArray(oi.baseIngredients)
+      ? oi.baseIngredients.map((b: any) => this.mapIngredient(b))
+      : [];
+    const extras = Array.isArray(oi.ingredients)
+      ? oi.ingredients.map((e: any) => this.mapIngredient(e))
+      : [];
+
+    return {
+      _id: oi._id,
+      productId: prod._id,
+      name: prod.name,
+      price: computedPrice,
+      quantity: oi.quantity,
+      size: oi.size,
+      image_url: prod.image_url,
+      category: prod.category,
+      preparedQuantity: oi.preparedQuantity ?? 0,
+      isPrepared: oi.isPrepared ?? false,
+      baseIngredients,
+      ingredients: extras,
+    };
+  }
+
+  // -----------------------------------------------
+  // Map an order (with populated items & user) → JSON
+  // -----------------------------------------------
+  private mapOrder(order: any): any {
+    const user = (order.userId as any) || null;
+    const customer = {
+      name: user?.firstName ?? order.customer?.name,
+      phone: user?.phone ?? order.customer?.phone,
+    };
+    const items = (order.items as any[])
+      .filter((oi) => !!oi.productId)
+      .map((oi) => this.mapOrderItem(oi));
+
+    const totalAmount = items.reduce((sum, it) => sum + it.price * it.quantity, 0);
+
+    return {
+      _id: order._id,
+      source: order.source,
+      customer,
+      items,
+      totalAmount: order.totalAmount ?? totalAmount,
+      orderStatus: order.orderStatus,
+      paymentMethod: order.paymentMethod,
+      paymentStatus: order.paymentStatus,
+      orderType: order.orderType,
+      deliveryAddress: order.deliveryAddress || null,
+      lastPositionUpdate: order.lastPositionUpdate,
+      positionHistory: order.positionHistory,
+      createdAt: order.createdAt,
+      scheduledFor: order.scheduledFor || null,
+      deliveryDriver: order.deliveryDriver || null,
+    };
+  }
+
+  // -------------------------------------------------------
+  // 1) findDeliveryOrders: orders ready or out‐for‐delivery
+  // -------------------------------------------------------
   async findDeliveryOrders(): Promise<any[]> {
-    // On récupère les commandes de livraison prêtes ou en cours de livraison
-    const orders = await this.orderModel.find({
-      orderStatus: { $in: [OrderStatus.READY_FOR_DELIVERY, OrderStatus.OUT_FOR_DELIVERY] },
-      orderType: OrderType.DELIVERY,
-    })
+    const raw = await this.orderModel
+      .find({
+        orderStatus: { $in: [OrderStatus.READY_FOR_DELIVERY, OrderStatus.OUT_FOR_DELIVERY] },
+        orderType: OrderType.DELIVERY,
+      })
       .sort('-createdAt')
       .populate({
         path: 'items',
         model: 'OrderItem',
-        populate: {
-          path: 'productId',
-          model: 'Product',
-          select: 'name image_url productType basePrice sizes category',
-          populate: {
-            path: 'category',
-            model: 'Category',
-            select: 'name',
-          },
-        },
+        populate: this.getOrderItemPopulate(),
       })
-      .populate({
-        path: 'userId',
-        model: 'User',
-        select: 'firstName phone',
-      })
+      .populate(this.getUserPopulate())
       .lean();
-    if (!orders || orders.length === 0) return [];
-    // On enrichit chaque commande avec items détaillés et customer
-    return orders.map(order => {
-      const customerData = {
-        name: (order.userId as any)?.firstName ?? order.customer?.name,
-        phone: (order.userId as any)?.phone ?? order.customer?.phone,
-      };
-      const items = (order.items as any[]).map(oi => {
-        const prod = oi.productId as any;
-        let computedPrice = oi.price;
-        if (prod.productType === 'multiple_sizes' && prod.sizes) {
-          const sizeMatch = prod.sizes.find((s: any) => s.name === oi.size);
-          if (sizeMatch) computedPrice = sizeMatch.price;
-        } else if (prod.productType === 'single_price' && prod.basePrice != null) {
-          computedPrice = prod.basePrice;
-        }
-        return {
-          _id: oi._id,
-          productId: prod._id,
-          name: prod.name,
-          price: computedPrice,
-          quantity: oi.quantity,
-          size: oi.size,
-          image_url: prod.image_url,
-          category: prod.category,
-          preparedQuantity: oi.preparedQuantity ?? 0,
-          isPrepared: oi.isPrepared ?? false,
-        };
-      });
-      return {
-        _id: order._id,
-        source: order.source,
-        customer: customerData,
-        items,
-        totalAmount: order.totalAmount,
-        orderStatus: order.orderStatus,
-        paymentMethod: order.paymentMethod,
-        paymentStatus: order.paymentStatus,
-        orderType: order.orderType,
-        deliveryAddress: order.deliveryAddress,
-        lastPositionUpdate: order.lastPositionUpdate,
-        positionHistory: order.positionHistory,
-        createdAt: order.createdAt,
-        scheduledFor: order.scheduledFor,
-        deliveryDriver: order.deliveryDriver,
-      };
-    });
+
+    if (!raw?.length) return [];
+
+    return raw.map((o) => this.mapOrder(o));
   }
 
+  // -------------------------------------------------------
+  // 2) findLiveOrders: in‐preparation today (incl. scheduled ≤ now)
+  // -------------------------------------------------------
   async findLiveOrders(): Promise<any[]> {
     const now = new Date();
-    // On ne prend que les commandes en préparation ET qui ne sont pas programmées, OU qui sont programmées mais dont scheduledFor <= maintenant
-    const orders = await this.orderModel
+    const raw = await this.orderModel
       .find({
         orderStatus: OrderStatus.IN_PREPARATION,
-        createdAt: { $gte: startOfDay(new Date()), $lt: endOfDay(new Date()) },
-        $or: [
-          { scheduledFor: null },
-          { scheduledFor: { $lte: now } },
-        ],
+        createdAt: { $gte: startOfDay(now), $lt: endOfDay(now) },
+        $or: [{ scheduledFor: null }, { scheduledFor: { $lte: now } }],
       })
       .sort('createdAt')
       .populate({
         path: 'items',
         model: 'OrderItem',
-        populate: {
-          path: 'productId',
-          model: 'Product',
-          select: 'name image_url productType basePrice sizes category',
-          populate: {
-            path: 'category',
-            model: 'Category',
-            select: 'name',
-          },
-        },
+        populate: this.getOrderItemPopulate(),
       })
-      .exec();
+      .lean();
 
-    return orders.map(order => {
-      const items = (order.items as any[]).map(oi => {
-        const prod = oi.productId as any;
-        let computedPrice = oi.price;
-
-        if (prod.productType === 'multiple_sizes' && prod.sizes) {
-          const sizeMatch = prod.sizes.find((s: any) => s.name === oi.size);
-          if (sizeMatch) computedPrice = sizeMatch.price;
-        } else if (prod.productType === 'single_price' && prod.basePrice != null) {
-          computedPrice = prod.basePrice;
-        }
-
-        return {
-          _id: oi._id,
-          productId: prod._id,
-          name: prod.name,
-          price: computedPrice,
-          quantity: oi.quantity,
-          size: oi.size,
-          image_url: prod.image_url,
-          category: prod.category,
-          preparedQuantity: oi.preparedQuantity ?? 0,
-          isPrepared: oi.isPrepared ?? false,
-        };
-      });
-
-      const totalAmount = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
-      return {
-        _id: order._id,
-        source: order.source,
-        customer: order.customer,
-        items,
-        totalAmount,
-        orderStatus: order.orderStatus,
-        paymentMethod: order.paymentMethod,
-        paymentStatus: order.paymentStatus,
-        orderType: order.orderType,
-        deliveryAddress: order.deliveryAddress,
-        lastPositionUpdate: order.lastPositionUpdate,
-        positionHistory: order.positionHistory,
-        createdAt: order.createdAt,
-        scheduledFor: order.scheduledFor,
-      };
-    });
+    return raw.map((o) => this.mapOrder(o));
   }
 
-  async getOrdersWithCustomerDetails(start: Date, end: Date): Promise<any[]> {
-    // même implémentation que précédemment, renvoyant la liste enrichie
-    return this._fetchOrdersWithCustomer(start, end);
-  }
-
-  // Récupère toutes les commandes d’un utilisateur avec détails client & produits
+  // -------------------------------------------------------
+  // 3) getOrdersByUser: all orders for a given user
+  // -------------------------------------------------------
   async getOrdersByUser(userId: string): Promise<any[]> {
-    const allOrders = await this.orderModel
+    const raw = await this.orderModel
       .find({ userId })
       .sort('-createdAt')
       .populate({
         path: 'items',
         model: 'OrderItem',
-        populate: {
-          path: 'productId',
-          model: 'Product',
-          select: 'name image_url productType basePrice sizes category',
-          populate: {
-            path: 'category',
-            model: 'Category',
-            select: 'name',
-          },
-        },
+        populate: this.getOrderItemPopulate(),
       })
+      .populate(this.getUserPopulate())
+      .lean();
+
+    return raw.map((o) => this.mapOrder(o));
+  }
+
+  // -------------------------------------------------------
+  // 4) Private “create” core (for both online & by‐employee)
+  // -------------------------------------------------------
+  private async _create(args: {
+    dto: any;
+    isEmployee: boolean;
+    userName?: string;
+  }): Promise<Order> {
+    const { dto, isEmployee, userName } = args;
+    if (dto.scheduledFor) {
+      const now = new Date();
+      const scheduledDate = new Date(dto.scheduledFor);
+      if (scheduledDate <= now) {
+        throw new BadRequestException('Scheduled date must be in the future');
+      }
+    }
+
+    // Build array of OrderItem inputs
+    const itemsSource: any[] = isEmployee
+      ? (dto.items as any[]).map((i) => this._mapItem(i))
+      : (await this._getCartItems(dto.userId)).map((i) => this._mapItem(i));
+
+    await this.checkItemsAvailability(itemsSource);
+
+    const source = isEmployee && userName ? userName : 'online';
+    const fee =
+      dto.orderType === OrderType.DELIVERY
+        ? this.restaurantService.getRestaurant()!.deliveryFee
+        : 0;
+
+    // Create Order shell
+    const order = await new this.orderModel({
+      source,
+      userId: dto.userId ?? undefined,
+      customer: dto.customer,
+      items: [],
+      totalAmount: 0,
+      orderStatus: dto.scheduledFor ? OrderStatus.SCHEDULED : OrderStatus.IN_PREPARATION,
+      paymentMethod: dto.paymentMethod,
+      paymentStatus: dto.paymentStatus,
+      orderType: dto.orderType,
+      deliveryAddress:
+        dto.orderType === OrderType.DELIVERY ? dto.deliveryAddress : null,
+      scheduledFor: dto.scheduledFor,
+    }).save();
+
+    // Insert OrderItems in bulk
+    const inserted = await this.orderItemModel.insertMany(
+      itemsSource.map((i) => ({
+        ...i,
+        orderId: this.toObjectId(order._id as string),
+        preparedQuantity: 0,
+        isPrepared: false,
+      })),
+    );
+    const itemIds = inserted.map((it) => it._id);
+    const totalAmount =
+      inserted.reduce((s, it) => s + it.price * it.quantity, 0) + fee;
+
+    // Deduct stock for each item
+    await Promise.all(
+      inserted.map(async (it) => {
+        if (!it.productId) return;
+        const prod = await this.orderItemModel.db
+          .collection('products')
+          .findOne({ _id: it.productId });
+        if (prod?.stock != null) {
+          await this.orderItemModel.db
+            .collection('products')
+            .updateOne(
+              { _id: it.productId },
+              { $inc: { stock: -it.quantity } },
+            );
+        }
+      }),
+    );
+
+    const updatedOrder = await this.orderModel
+      .findByIdAndUpdate(order._id, { items: itemIds, totalAmount }, { new: true })
+      .orFail(() => new NotFoundException('Order not found after create'));
+
+    if (!isEmployee) {
+      await this.cartModel.updateOne({ userId: dto.userId }, { items: [] });
+    }
+
+    this.liveOrdersGateway.sendUpdate();
+    return updatedOrder;
+  }
+
+  // -------------------------------------------------------
+  // 5) getSingleOrderWithCustomer: returns mapped order
+  // -------------------------------------------------------
+  private async _fetchSingleOrderWithCustomer(id: string): Promise<any> {
+    const raw = await this.orderModel
+      .findById(id)
       .populate({
-        path: 'userId',
-        model: 'User',
-        select: 'firstName phone',
+        path: 'items',
+        model: 'OrderItem',
+        populate: this.getOrderItemPopulate(),
       })
       .lean();
 
-    return allOrders.map(order => {
-      const customerData = {
-        name:  (order.userId as any)?.firstName  ?? order.customer?.name,
-        phone: (order.userId as any)?.phone      ?? order.customer?.phone,
-      };
-      const items = (order.items as any[])
-        .filter(oi => oi.productId) // Ne garder que les items avec produit peuplé
-        .map(oi => {
-          const prod = oi.productId as any;
-          let computedPrice = oi.price;
-          if (prod.productType === 'multiple_sizes' && prod.sizes) {
-            const sizeMatch = prod.sizes.find((s: any) => s.name === oi.size);
-            if (sizeMatch) computedPrice = sizeMatch.price;
-          } else if (prod.productType === 'single_price' && prod.basePrice != null) {
-            computedPrice = prod.basePrice;
-          }
-          return {
-            _id: oi._id,
-            productId: prod._id,
-            name: prod.name,
-            price: computedPrice,
-            quantity: oi.quantity,
-            size: oi.size,
-            image_url: prod.image_url,
-            category: prod.category,
-            preparedQuantity: oi.preparedQuantity ?? 0,
-            isPrepared: oi.isPrepared ?? false,
-          };
-        });
-      return {
-        _id:             order._id,
-        source:          order.source,
-        totalAmount:     order.totalAmount,
-        orderStatus:     order.orderStatus,
-        paymentMethod:   order.paymentMethod,
-        paymentStatus:   order.paymentStatus,
-        orderType:       order.orderType,
-        createdAt:       order.createdAt,
-        deliveryAddress: order.deliveryAddress,
-        customer:        customerData,
-        items,
-      };
-    });
+    if (!raw) throw new NotFoundException('Order not found');
+
+    return this.mapOrder(raw);
+  }
+
+  // -------------------------------------------------------
+  // 6) getOrdersWithCustomerDetails: date‐range
+  // -------------------------------------------------------
+  private async _fetchOrdersWithCustomer(
+    start: Date,
+    end: Date,
+  ): Promise<any[]> {
+    const all = await this.orderModel
+      .find({ createdAt: { $gte: start, $lte: end } })
+      .sort('-createdAt')
+      .populate({
+        path: 'items',
+        model: 'OrderItem',
+        populate: this.getOrderItemPopulate(),
+      })
+      .lean();
+
+    return all.map((o) => this.mapOrder(o));
+  }
+
+  async getOrdersWithCustomerDetails(start: Date, end: Date): Promise<any[]> {
+    return this._fetchOrdersWithCustomer(start, end);
   }
 
   async getOrderWithCustomer(id: string): Promise<any> {
@@ -287,254 +373,339 @@ export class OrderService implements OnModuleInit {
     return this._create({ dto, isEmployee: false });
   }
 
-  async createOrderByEmployee(dto: CreateOrderByEmployeeDto, userName: string): Promise<Order> {
+  async createOrderByEmployee(
+    dto: CreateOrderByEmployeeDto,
+    userName: string,
+  ): Promise<Order> {
     return this._create({ dto, isEmployee: true, userName });
   }
 
-  async updateOrder(id: string, dto: Partial<Omit<Order, 'totalAmount'>>): Promise<Order> {
-    return this._update(id, dto);
-  }
-
-  private async _update(id: string, dto: Partial<Order>): Promise<Order> {
+  // -------------------------------------------------------
+  // updateOrder core (handles item changes, stock, totals)
+  // -------------------------------------------------------
+  async updateOrder(
+    id: string,
+    dto: Partial<Omit<Order, 'totalAmount'>>,
+  ): Promise<Order> {
     const order = await this.orderModel.findById(id).populate('items').exec();
     if (!order) throw new NotFoundException('Order not found');
+
     this.checkModificationAllowed(order, dto);
 
-    // Vérification disponibilité produits (avant modif)
     if (dto.items && Array.isArray(dto.items)) {
       await this.checkItemsAvailability(dto.items);
     }
 
-    // Empêcher l'écrasement des items si non précisé dans dto
-    let updatedOrder: OrderDocument | null = null;
-    // --- Gestion du stock : charger l'ancienne commande et ses items ---
-    const oldItems: any[] = order ? (order.items as any[]) : [];
-    let newItemsInput: any[] = [];
+    // Keep oldItems for stock adjustment
+    const oldItems = (order.items as any[]) || [];
+    let newItems: any[] = [];
+
     if (dto.items === undefined) {
+      // remove items field to avoid overwriting
       const { items, ...rest } = dto;
-      dto = rest;
-    } else if (Array.isArray(dto.items)) {
-      newItemsInput = await this.updateOrderItems(dto, id);
+      dto = rest as any;
+    } else {
+      newItems = await this.updateOrderItems(dto, id);
     }
-    // --- Gestion du stock lors de la modification d'une commande ---
+
     if (dto.items !== undefined) {
-      if (newItemsInput.length === 0 && dto.items) {
-        const ids = dto.items.map((id: any) => this.toObjectId(id));
-        newItemsInput = await this.orderItemModel.find({ _id: { $in: ids } }).lean();
+      if (!newItems.length && Array.isArray(dto.items)) {
+        const ids = (dto.items as any[]).map((x) => this.toObjectId(x));
+        newItems = await this.orderItemModel.find({ _id: { $in: ids } }).lean();
       }
-      await this.updateProductStocks(oldItems, newItemsInput);
+      await this.updateProductStocks(oldItems, newItems);
     }
-    // scheduledFor: logique inchangée
+
     if (dto.scheduledFor) {
-      const orderWithItems = await this.orderModel.findById(id).populate('items').exec();
-      if (!orderWithItems) throw new NotFoundException('Order not found for scheduled check');
-      const hasPrepared = (orderWithItems.items as any[]).some(item => item.isPrepared === true || item.preparedQuantity > 0);
-      const now = new Date();
-      const scheduledDate = new Date(dto.scheduledFor);
-      if (scheduledDate <= now) {
-        throw new BadRequestException("The scheduled date must be in the future");
-      }
-      if (!orderWithItems.scheduledFor && hasPrepared) {
-        throw new BadRequestException("Impossible to schedule an order that has already been prepared or has items prepared");
-      }
-      else if (orderWithItems.scheduledFor && hasPrepared && scheduledDate > new Date(orderWithItems.scheduledFor)) {
-        throw new BadRequestException("Impossible to schedule an order that has already been prepared or has items prepared");
-      } else {
-        dto.orderStatus = OrderStatus.SCHEDULED;
-        this.deliveryGateway.emitStatusUpdate(id, OrderStatus.SCHEDULED);
-      }
+      await this.handleRescheduleLogic(id, dto.scheduledFor);
     }
-    updatedOrder = await this.orderModel
+
+    const updated = await this.orderModel
       .findByIdAndUpdate(id, dto, { new: true })
-      .orFail(() => new NotFoundException('Order not found'));
+      .orFail(() => new NotFoundException('Order not found on update'));
+
     await this.recomputeTotalAmount(id, dto);
     this.liveOrdersGateway.sendUpdate();
-    const result = await this.orderModel.findById(id).populate('items').exec();
-    if (!result) {
-      throw new NotFoundException('Order not found');
+
+    return this.orderModel
+    .findById(id)
+    .populate('items')
+    .orFail(() => new NotFoundException('Order not found after update'))
+    .exec();
+  }
+
+  private async handleRescheduleLogic(orderId: string, newDate: Date) {
+    const orderWithItems = await this.orderModel
+      .findById(orderId)
+      .populate('items')
+      .exec();
+    if (!orderWithItems)
+      throw new NotFoundException('Order not found for reschedule');
+
+    const hasPrepared = (orderWithItems.items as any[]).some(
+      (it) => it.isPrepared || it.preparedQuantity > 0,
+    );
+
+    const now = new Date();
+    const scheduledDate = new Date(newDate);
+    if (scheduledDate <= now) {
+      throw new BadRequestException('Scheduled date must be in the future');
     }
-    return result;
+    if (!orderWithItems.scheduledFor && hasPrepared) {
+      throw new BadRequestException(
+        'Cannot schedule after items prepared',
+      );
+    } else if (
+      orderWithItems.scheduledFor &&
+      hasPrepared &&
+      scheduledDate > new Date(orderWithItems.scheduledFor)
+    ) {
+      throw new BadRequestException(
+        'Cannot reschedule after items prepared',
+      );
+    } else {
+      orderWithItems.orderStatus = OrderStatus.SCHEDULED;
+      await orderWithItems.save();
+      this.deliveryGateway.emitStatusUpdate(orderId, OrderStatus.SCHEDULED);
+    }
   }
 
   private checkModificationAllowed(order: any, dto: Partial<Order>) {
     if (!dto.items) return;
-    const oldItems = (order.items as any[]);
-    const newItems = dto.items;
-    // Map des items préparés dans l'ancienne commande (clé = _id ou productId)
-    const preparedMap = new Map<string, any>();
-    for (const item of oldItems) {
-      if ((item.isPrepared === true || item.preparedQuantity > 0) && item._id) {
-        preparedMap.set(String(item._id), item);
+    const oldItems = (order.items as any[]) || [];
+    const prepared = new Map<string, any>();
+    for (const it of oldItems) {
+      if ((it.isPrepared || it.preparedQuantity > 0) && it._id) {
+        prepared.set(String(it._id), it);
       }
     }
-    // Pour chaque item préparé, vérifier qu'il existe encore dans la nouvelle liste
-    for (const [id, oldItem] of preparedMap.entries()) {
-      const found = newItems.find((ni: any) => String(ni._id || ni) === id);
+    for (const [id] of prepared.entries()) {
+      const found = (dto.items as any[]).find(
+        (ni) => String(ni._id || ni) === id,
+      );
       if (!found) {
-        throw new BadRequestException("You cannot remove an item that has already been prepared");
+        throw new BadRequestException(
+          'Cannot remove an item already prepared',
+        );
       }
     }
   }
 
-  private computeItemsChanged(order: any, dto: Partial<Order>): boolean {
-    const oldItems = (order.items as any[]);
-    const oldIds = oldItems.map(i => String(i.productId));
-    const oldQtys = oldItems.map(i => i.quantity);
-    const newIds = dto.items!.map((i: any) => String(i.productId || i));
-    const newQtys = dto.items!.map((i: any) => i.quantity ?? null);
-    return oldIds.length !== newIds.length || oldIds.some((id, idx) => id !== newIds[idx]) || oldQtys.some((q, idx) => q !== newQtys[idx]);
-  }
+  private async updateOrderItems(
+    dto: Partial<Order>,
+    orderId: string,
+  ): Promise<any[]> {
+    const isUpdatable = (it: any): it is Record<string, any> =>
+      it &&
+      typeof it === 'object' &&
+      it._id &&
+      ('quantity' in it ||
+        'price' in it ||
+        'size' in it ||
+        'name' in it ||
+        'image_url' in it ||
+        'category' in it ||
+        'baseIngredients' in it ||
+        'ingredients' in it);
 
-  private computeDateChanged(order: any, dto: Partial<Order>): boolean {
-    const oldDate = order.scheduledFor ? new Date(order.scheduledFor).getTime() : null;
-    const newDate = dto.scheduledFor ? new Date(dto.scheduledFor).getTime() : null;
-    return oldDate !== newDate;
-  }
+    const allIt = (dto.items as any[]) || [];
+    const existing = allIt.filter(isUpdatable);
+    const fresh = allIt.filter((i) => !isUpdatable(i));
 
-  private async updateOrderItems(dto: Partial<Order>, id: string): Promise<any[]> {
-    const isUpdatableObject = (item: any) =>
-      item && typeof item === 'object' && item._id && (
-        'quantity' in item || 'price' in item || 'size' in item || 'name' in item || 'image_url' in item || 'category' in item
-      );
-    const existingItems = dto.items!.filter(isUpdatableObject);
-    const newItems = dto.items!.filter((item: any) => !item || !item._id);
-    for (const item of existingItems) {
-      await this.orderItemModel.findByIdAndUpdate(item._id, {
-        $set: {
-          quantity: typeof item === 'object' && 'quantity' in item ? item.quantity : undefined,
-          price: typeof item === 'object' && 'price' in item ? item.price : undefined,
-          size: typeof item === 'object' && 'size' in item ? item.size : undefined,
-          name: (typeof item === 'object' && 'name' in item) ? item.name : undefined,
-          image_url: (typeof item === 'object' && 'image_url' in item) ? item.image_url : undefined,
-          category: typeof item === 'object' && 'category' in item ? item.category : undefined,
-        }
-      });
-    }
-    const existingItemIds = existingItems.map((item: any) => item._id).concat(
-      dto.items!.filter((item: any) => typeof item === 'string' || item instanceof Types.ObjectId)
+    // Update existing
+    await Promise.all(
+      existing.map((it) =>
+        this.orderItemModel.findByIdAndUpdate(it._id, {
+          $set: {
+            name: it.name,
+            price: it.price,
+            quantity: it.quantity,
+            size: it.size,
+            image_url: it.image_url,
+            category: it.category,
+            baseIngredients: Array.isArray(it.baseIngredients)
+              ? it.baseIngredients.map((b: any) => ({
+                  _id: this.toObjectId(b._id),
+                  quantity: b.quantity,
+                }))
+              : [],
+            ingredients: Array.isArray(it.ingredients)
+              ? it.ingredients.map((ing: any) => ({
+                  _id: this.toObjectId(ing._id),
+                  quantity: ing.quantity,
+                }))
+              : [],
+          },
+        }),
+      ),
     );
+
+    // Insert new
     let created: any[] = [];
-    if (newItems.length > 0) {
+    if (fresh.length) {
       created = await this.orderItemModel.insertMany(
-        newItems.map(i => ({ ...i, orderId: this.toObjectId(id), preparedQuantity: 0, isPrepared: false }))
+        fresh.map((i) => {
+          const mapped = this._mapItem(i);
+          return {
+            ...mapped,
+            orderId: this.toObjectId(orderId),
+            preparedQuantity: 0,
+            isPrepared: false,
+          };
+        }),
       );
-      dto.items = [...existingItemIds, ...created.map(i => i._id)];
-      const currentOrder = await this.orderModel.findById(id).exec();
-      if (currentOrder && currentOrder.orderStatus === OrderStatus.PREPARED) {
-        dto.orderStatus = OrderStatus.IN_PREPARATION;
-        this.deliveryGateway.emitStatusUpdate(id, OrderStatus.IN_PREPARATION);
-      }
-    } else {
-      dto.items = existingItemIds;
     }
+
+    // Build dto.items as array of all IDs
+    const existingIds = existing.map((it) => it._id);
+    const newIds = created.map((it) => it._id);
+    dto.items = [...existingIds, ...newIds];
+
+    // Return detailed item payloads for stock logic
     return [
-      ...existingItems.map((item: any) => ({ ...item })),
-      ...created.map((item: any) => ({
-        ...item.toObject ? item.toObject() : item,
-        _id: item._id,
-        productId: item.productId,
-        quantity: item.quantity,
-      }))
+      ...existing.map((it: any) => ({
+        _id: it._id,
+        productId: it.productId,
+        name: it.name,
+        price: it.price,
+        quantity: it.quantity,
+        size: it.size,
+        image_url: it.image_url,
+        category: it.category,
+        baseIngredients: Array.isArray(it.baseIngredients)
+          ? it.baseIngredients.map((b: any) => ({
+              _id: (b._id as Types.ObjectId).toString(),
+              quantity: b.quantity,
+            }))
+          : [],
+        ingredients: Array.isArray(it.ingredients)
+          ? it.ingredients.map((e: any) => ({
+              _id: (e._id as Types.ObjectId).toString(),
+              quantity: e.quantity,
+            }))
+          : [],
+      })),
+      ...created.map((it: any) => ({
+        _id: it._id,
+        productId: it.productId,
+        name: it.name,
+        price: it.price,
+        quantity: it.quantity,
+        size: it.size,
+        image_url: it.image_url,
+        category: it.category,
+        baseIngredients: (it.baseIngredients as any[]).map((b: any) => ({
+          _id: (b._id as Types.ObjectId).toString(),
+          quantity: b.quantity,
+        })),
+        ingredients: (it.ingredients as any[]).map((e: any) => ({
+          _id: (e._id as Types.ObjectId).toString(),
+          quantity: e.quantity,
+        })),
+      })),
     ];
   }
 
   private async updateProductStocks(oldItems: any[], newItems: any[]) {
-    const oldMap = new Map<string, { quantity: number, _id: any }>();
-    for (const item of oldItems) {
-      if (item.productId) {
-        oldMap.set(String(item.productId), { quantity: item.quantity, _id: item._id });
-      }
-    }
-    const newMap = new Map<string, { quantity: number, _id: any }>();
-    for (const item of newItems) {
-      if (item.productId) {
-        newMap.set(String(item.productId), { quantity: item.quantity, _id: item._id });
-      }
-    }
-    const allProductIds = new Set([
-      ...Array.from(oldMap.keys()),
-      ...Array.from(newMap.keys()),
-    ]);
-    for (const productId of allProductIds) {
-      const oldQty = oldMap.get(productId)?.quantity ?? 0;
-      const newQty = newMap.get(productId)?.quantity ?? 0;
-      if (oldQty !== newQty) {
-        const product = await this.orderItemModel.db.collection('products').findOne({ _id: this.toObjectId(productId) });
-        if (product && product.stock !== null && product.stock !== undefined) {
-          const diff = newQty - oldQty;
-          if (diff !== 0) {
-            await this.orderItemModel.db.collection('products').updateOne(
-              { _id: this.toObjectId(productId) },
-              { $inc: { stock: -diff } }
-            );
+    const oldMap = new Map<string, number>();
+    oldItems.forEach((it) => {
+      if (it.productId) oldMap.set(String(it.productId), it.quantity);
+    });
+    const newMap = new Map<string, number>();
+    newItems.forEach((it) => {
+      if (it.productId) newMap.set(String(it.productId), it.quantity);
+    });
+    const allIds = new Set([...oldMap.keys(), ...newMap.keys()]);
+
+    await Promise.all(
+      Array.from(allIds).map(async (pid) => {
+        const oldQty = oldMap.get(pid) ?? 0;
+        const newQty = newMap.get(pid) ?? 0;
+        const diff = newQty - oldQty;
+        if (diff !== 0) {
+          const prod = await this.orderItemModel.db
+            .collection('products')
+            .findOne({ _id: this.toObjectId(pid) });
+          if (prod?.stock != null) {
+            await this.orderItemModel.db
+              .collection('products')
+              .updateOne(
+                { _id: this.toObjectId(pid) },
+                { $inc: { stock: -diff } },
+              );
           }
         }
-      }
-    }
+      }),
+    );
   }
 
   private async recomputeTotalAmount(id: string, dto: Partial<Order>) {
-    const populatedOrder = await this.orderModel.findById(id).populate('items').exec();
-    if (!populatedOrder) throw new NotFoundException('Order not found after update');
-    const items = (populatedOrder.items as any[]);
-    let totalAmount = items.reduce((sum, i) => sum + (i.price * i.quantity), 0);
-    const orderType = dto.orderType ?? populatedOrder.orderType;
-    if (orderType === OrderType.DELIVERY) {
-      const restaurant = this.restaurantService.getRestaurant();
-      if (restaurant && restaurant.deliveryFee) {
-        totalAmount += restaurant.deliveryFee;
-      }
+    const ord = await this.orderModel.findById(id).populate('items').exec();
+    if (!ord) throw new NotFoundException('Order not found after update');
+    const items = (ord.items as any[]) || [];
+    let total = items.reduce((sum, it) => sum + it.price * it.quantity, 0);
+    const type = dto.orderType ?? ord.orderType;
+    if (type === OrderType.DELIVERY) {
+      const rest = this.restaurantService.getRestaurant();
+      if (rest?.deliveryFee != null) total += rest.deliveryFee;
     }
-    await this.orderModel.findByIdAndUpdate(id, { totalAmount }, { new: true })
+    await this.orderModel
+      .findByIdAndUpdate(id, { totalAmount: total }, { new: true })
       .orFail(() => new NotFoundException('Order not found after total update'));
   }
 
-  async updatePosition(id: string, pos: { lat: number; lng: number }): Promise<Order> {
-    const updatedOrder = await this.orderModel
+  async updatePosition(
+    id: string,
+    pos: { lat: number; lng: number },
+  ): Promise<Order> {
+    const updated = await this.orderModel
       .findByIdAndUpdate(id, { deliveryPosition: pos }, { new: true })
       .orFail(() => new NotFoundException('Order not found'));
-
-    // Emit position update to all clients in the order room
     this.deliveryGateway.emitPositionUpdate(id, pos.lat, pos.lng);
-    return updatedOrder;
+    return updated;
   }
 
   async validateOrderItem(orderId: string, itemId: string): Promise<Order> {
-    // même logique de validation et bascule de statut
-    const item = await this.orderItemModel.findById(itemId).orFail(
-      () => new NotFoundException('Item not found'),
-    );
+    const item = await this.orderItemModel
+      .findById(itemId)
+      .orFail(() => new NotFoundException('Item not found'));
     const newQty = (item.preparedQuantity || 0) + 1;
     const done = newQty >= item.quantity;
+
     await this.orderItemModel.findByIdAndUpdate(itemId, {
       preparedQuantity: newQty,
       isPrepared: done,
     });
-    const order = await this.orderModel.findById(orderId).orFail(
-      () => new NotFoundException('Order not found'),
-    );
 
-    const orderObjectId = typeof orderId === 'string' ? new Types.ObjectId(orderId) : orderId;
+    const ord = await this.orderModel
+      .findById(orderId)
+      .orFail(() => new NotFoundException('Order not found'));
 
-    const allPrepared = await this.orderItemModel
-      .countDocuments({ orderId: orderObjectId, isPrepared: false }) === 0;
+    const allPrepared =
+      (await this.orderItemModel.countDocuments({
+        orderId: this.toObjectId(orderId),
+        isPrepared: false,
+      })) === 0;
 
     if (allPrepared) {
-      order.orderStatus = OrderStatus.PREPARED;
-      await order.save();
-      this.deliveryGateway.emitStatusUpdate(orderId, order.orderStatus);
+      ord.orderStatus = OrderStatus.PREPARED;
+      await ord.save();
+      this.deliveryGateway.emitStatusUpdate(orderId, ord.orderStatus);
     }
     this.liveOrdersGateway.sendUpdate();
-    return order;
+    return ord;
   }
 
-  async updateOrderStatus(orderId: string, status: OrderStatus): Promise<Order> {
-    const updatedOrder = await this.orderModel
+  async updateOrderStatus(
+    orderId: string,
+    status: OrderStatus,
+  ): Promise<Order> {
+    const updated = await this.orderModel
       .findByIdAndUpdate(orderId, { orderStatus: status }, { new: true })
       .orFail(() => new NotFoundException('Order not found'));
     this.liveOrdersGateway.sendUpdate();
     this.deliveryGateway.emitStatusUpdate(orderId, status);
-    return updatedOrder;
+    return updated;
   }
 
   async deleteAllOrders(): Promise<any> {
@@ -550,109 +721,35 @@ export class OrderService implements OnModuleInit {
   }
 
   async deleteOrderByUser(userId: string, orderId: string): Promise<any> {
-    return this.orderModel
-      .findOneAndDelete({ userId, _id: orderId })
-      .exec();
+    return this.orderModel.findOneAndDelete({ userId, _id: orderId }).exec();
   }
 
   async mergeOrders(guestId: string, userId: string): Promise<Order[]> {
-    return this.orderModel
-      .updateMany({ userId: guestId }, { userId })
-      .then(() => this.getOrdersByUser(userId));
-  }
-
-
-  private async _create(args: { dto: any; isEmployee: boolean; userName?: string }): Promise<Order> {
-    const { dto, isEmployee, userName } = args;
-    if (dto.scheduledFor && dto.scheduledFor.length === 0) {
-      const now = new Date();
-      const scheduledDate = new Date(dto.scheduledFor);
-      // scheduledFor doit être dans le futur
-      if (scheduledDate <= now) {
-        throw new BadRequestException("The scheduled date must be in the future");
-      }
-    }
-    const itemsSource = isEmployee
-      ? (dto.items as any[]).map(i => this._mapItem(i))
-      : (await this._getCartItems(dto.userId)).map(i => this._mapItem(i));
-    // Vérification disponibilité produits (avant création)
-    await this.checkItemsAvailability(itemsSource);
-
-    // Si employé, la source est le nom de l'employé, sinon 'online'
-    const source = isEmployee && userName ? userName : 'online';
-
-    const fee = dto.orderType === OrderType.DELIVERY
-      ? this.restaurantService.getRestaurant()!.deliveryFee
-      : 0;
-
-    const order = await new this.orderModel({
-      source,
-      userId: dto.userId ?? undefined,
-      customer: dto.customer,
-      items: [],
-      totalAmount: 0,
-      orderStatus: dto.scheduledFor ? OrderStatus.SCHEDULED : OrderStatus.IN_PREPARATION,
-      paymentMethod: dto.paymentMethod,
-      paymentStatus: dto.paymentStatus,
-      orderType: dto.orderType,
-      deliveryAddress: dto.orderType === OrderType.DELIVERY ? dto.deliveryAddress : null,
-      scheduledFor: dto.scheduledFor,
-    }).save();
-
-    const createdItems = await this.orderItemModel.insertMany(
-      itemsSource.map(i => ({ ...i, orderId: this.toObjectId(order._id as string | Types.ObjectId), preparedQuantity: 0, isPrepared: false }))
-    );
-    const itemsIds = createdItems.map(i => this.toObjectId(i.id));
-    const totalAmount = createdItems.reduce((s, i) => s + i.price * i.quantity, 0) + fee;
-    // --- Diminuer le stock des produits commandés (si stock limité) ---
-    for (const item of createdItems) {
-      if (item.productId) {
-        const product = await this.orderItemModel.db.collection('products').findOne({ _id: item.productId });
-        if (product && product.stock !== null && product.stock !== undefined) {
-          await this.orderItemModel.db.collection('products').updateOne(
-            { _id: item.productId },
-            { $inc: { stock: -item.quantity } }
-          );
-        }
-      }
-    }
-    // --- Fin gestion stock ---
-    // Mise à jour fiable de la commande en base
-    const updatedOrder = await this.orderModel.findByIdAndUpdate(
-      order._id,
-      { items: itemsIds, totalAmount },
-      { new: true }
-    );
-
-    if (!updatedOrder) {
-      throw new NotFoundException('Order not found after update');
-    }
-
-    if (!isEmployee) {
-      await this.cartModel.updateOne({ userId: dto.userId }, { items: [] });
-    }
-
-    this.liveOrdersGateway.sendUpdate();
-    return updatedOrder;
+    await this.orderModel.updateMany({ userId: guestId }, { userId });
+    return this.getOrdersByUser(userId);
   }
 
   private async checkItemsAvailability(items: any[]) {
-    for (const item of items) {
-      if (!item.productId) continue;
-      const product = await this.orderItemModel.db.collection('products').findOne({ _id: this.toObjectId(item.productId) });
-      if (!product) throw new BadRequestException(`Product not found: ${item.productId}`);
-      if (product.stock !== null && product.stock !== undefined) {
-        if (item.quantity > product.stock) {
-          throw new BadRequestException(`Not enough stock for product '${product.name}' (requested: ${item.quantity}, available: ${product.stock})`);
+    await Promise.all(
+      items.map(async (it) => {
+        if (!it.productId) return;
+        const prod = await this.orderItemModel.db
+          .collection('products')
+          .findOne({ _id: this.toObjectId(it.productId) });
+        if (!prod) throw new BadRequestException(`Product not found: ${it.productId}`);
+        if (prod.stock != null && it.quantity > prod.stock) {
+          throw new BadRequestException(
+            `Not enough stock for '${prod.name}' (requested: ${it.quantity}, available: ${prod.stock})`,
+          );
         }
-      }
-    }
+      }),
+    );
   }
 
   private async _getCartItems(userId: string) {
-    const cart = await this.cartModel.findOne({ userId }).orFail(
-      () => new BadRequestException('Cart is empty'),
-    );
+    const cart = await this.cartModel.findOne({ userId }).orFail(() => {
+      throw new BadRequestException('Cart is empty');
+    });
     if (!cart.items.length) throw new BadRequestException('Cart is empty');
     return cart.items;
   }
@@ -665,6 +762,20 @@ export class OrderService implements OnModuleInit {
       price: item.price,
       size: item.size,
       image_url: item.image_url,
+
+      baseIngredients: Array.isArray(item.baseIngredients)
+        ? item.baseIngredients.map((b: any) => ({
+            _id: this.toObjectId(b._id),
+            quantity: b.quantity,
+          }))
+        : [],
+
+      ingredients: Array.isArray(item.ingredients)
+        ? item.ingredients.map((ing: any) => ({
+            _id: this.toObjectId(ing._id),
+            quantity: ing.quantity,
+          }))
+        : [],
     };
   }
 
@@ -674,330 +785,66 @@ export class OrderService implements OnModuleInit {
       : (id as Types.ObjectId);
   }
 
-
-/** Récupère et transforme une commande avec détails client & produits */
-  private async _fetchSingleOrderWithCustomer(id: string): Promise<any> {
-    // On récupère la commande sans peupler userId dans un premier temps
-    let order = await this.orderModel
-      .findById(id)
-      .populate({
-        path: 'items',
-        model: 'OrderItem',
-        populate: {
-          path: 'productId',
-          model: 'Product',
-          select: 'name image_url productType basePrice sizes category',
-          populate: {
-            path: 'category',
-            model: 'Category',
-            select: 'name',
-          },
-        },
-      })
-      .lean();
-
-    if (!order) {
-      throw new NotFoundException('Order not found');
-    }
-
-    // Si userId est un ObjectId valide, on peuple les infos utilisateur
-    let user: any = null;
-    if (order.userId && Types.ObjectId.isValid(order.userId.toString())) {
-      user = await this.orderModel.db.collection('users').findOne({ _id: this.toObjectId(order.userId) }, { projection: { firstName: 1, phone: 1 } });
-    }
-
-    const customerData = {
-      name:  user?.firstName ?? order.customer?.name,
-      phone: user?.phone     ?? order.customer?.phone,
-    };
-
-    const items = (order.items as any[]).map(oi => {
-      const prod = oi.productId as any;
-      let computedPrice = oi.price;
-
-      if (prod.productType === 'multiple_sizes' && prod.sizes) {
-        const sizeMatch = prod.sizes.find((s: any) => s.name === oi.size);
-        if (sizeMatch) computedPrice = sizeMatch.price;
-      } else if (prod.productType === 'single_price' && prod.basePrice != null) {
-        computedPrice = prod.basePrice;
-      }
-
-      return {
-        _id:              oi._id, // Ajout de l'identifiant de l'item
-        productId:        prod._id,
-        name:             prod.name,
-        price:            computedPrice,
-        quantity:         oi.quantity,
-        size:             oi.size,
-        image_url:        prod.image_url,
-        category:         prod.category,
-        preparedQuantity: oi.preparedQuantity  ?? 0,
-        isPrepared:       oi.isPrepared       ?? false,
-      };
-    });
-
-    return {
-      _id:                order._id,
-      source:             order.source,
-      items,
-      totalAmount:        order.totalAmount,
-      orderStatus:        order.orderStatus,
-      paymentMethod:      order.paymentMethod,
-      paymentStatus:      order.paymentStatus,
-      orderType:          order.orderType,
-      deliveryAddress:    order.deliveryAddress,
-      positionHistory:    order.positionHistory,
-      lastPositionUpdate: order.lastPositionUpdate,
-      customer:           customerData,
-      scheduledFor:       order.scheduledFor,
-    };
-  }
-
-  /** Récupère et transforme toutes les commandes d’une plage donnée */
-  private async _fetchOrdersWithCustomer(start: Date, end: Date): Promise<any[]> {
-    const allOrders = await this.orderModel
-      .find({ createdAt: { $gte: start, $lte: end } })
-      .sort('-createdAt')
-      .populate({
-        path: 'items',
-        model: 'OrderItem',
-        populate: {
-          path: 'productId',
-          model: 'Product',
-          select: 'name image_url productType basePrice sizes category',
-          populate: {
-            path: 'category',
-            model: 'Category',
-            select: 'name',
-          },
-        },
-      })
-      .lean();
-
-    // Séparer selon que userId soit un ObjectId valide
-    const isValidId = Types.ObjectId.isValid;
-    const withOid   = allOrders.filter(o => o.userId && isValidId(o.userId.toString()));
-    const populated  = await this.orderModel
-      .find({ _id: { $in: withOid.map(o => o._id) } })
-      .populate('userId', 'firstName phone')
-      .select('_id userId')
-      .lean();
-
-    const userMap = new Map<string, any>(
-      populated.map(o => [o._id.toString(), o.userId]),
-    );
-
-    return allOrders.map(order => {
-      const u = userMap.get(order._id.toString()) as any;
-      // Ajout des items enrichis
-      const items = (order.items as any[]).map(oi => {
-        const prod = oi.productId as any;
-        let computedPrice = oi.price;
-        if (prod.productType === 'multiple_sizes' && prod.sizes) {
-          const sizeMatch = prod.sizes.find((s: any) => s.name === oi.size);
-          if (sizeMatch) computedPrice = sizeMatch.price;
-        } else if (prod.productType === 'single_price' && prod.basePrice != null) {
-          computedPrice = prod.basePrice;
-        }
-        return {
-          _id: oi._id,
-          productId: prod._id,
-          name: prod.name,
-          price: computedPrice,
-          quantity: oi.quantity,
-          size: oi.size,
-          image_url: prod.image_url,
-          category: prod.category,
-          preparedQuantity: oi.preparedQuantity ?? 0,
-          isPrepared: oi.isPrepared ?? false,
-        };
-      });
-      return {
-        _id:             order._id,
-        source:          order.source,
-        totalAmount:     order.totalAmount,
-        orderStatus:     order.orderStatus,
-        paymentMethod:   order.paymentMethod,
-        paymentStatus:   order.paymentStatus,
-        orderType:       order.orderType,
-        createdAt:       order.createdAt,
-        deliveryAddress: order.deliveryAddress,
-        customer: {
-          name:  u?.firstName ?? order.customer?.name,
-          phone: u?.phone     ?? order.customer?.phone,
-        },
-        items,
-      };
-    });
-  }
-
-  // Récupérer les commandes programmées (scheduled) du jour
+  // -------------------------------------------------------------
+  // Scheduled + Prepared orders
+  // -------------------------------------------------------------
   async getScheduledOrders(start: Date, end: Date): Promise<any[]> {
-
-    // On considère programmées : scheduledFor entre start et end
-    const scheduledOrders = await this.orderModel
-      .find({ scheduledFor: { $gte: start, $lte: end }, orderStatus: OrderStatus.SCHEDULED })
+    const raw = await this.orderModel
+      .find({
+        scheduledFor: { $gte: start, $lte: end },
+        orderStatus: OrderStatus.SCHEDULED,
+      })
       .sort('scheduledFor')
       .populate({
         path: 'items',
         model: 'OrderItem',
-        populate: {
-          path: 'productId',
-          model: 'Product',
-          select: 'name image_url productType basePrice sizes category',
-          populate: {
-            path: 'category',
-            model: 'Category',
-            select: 'name',
-          },
-        },
+        populate: this.getOrderItemPopulate(),
       })
-      .populate({
-        path: 'userId',
-        model: 'User',
-        select: 'firstName phone',
-      })
+      .populate(this.getUserPopulate())
       .lean();
 
-    // Formatage enrichi similaire à getOrdersWithCustomerDetails
-    return scheduledOrders.map(order => {
-      const customerData = {
-        name:  (order.userId as any)?.firstName  ?? order.customer?.name,
-        phone: (order.userId as any)?.phone      ?? order.customer?.phone,
-      };
-      const items = (order.items as any[]).map(oi => {
-        const prod = oi.productId as any;
-        let computedPrice = oi.price;
-        if (prod.productType === 'multiple_sizes' && prod.sizes) {
-          const sizeMatch = prod.sizes.find((s: any) => s.name === oi.size);
-          if (sizeMatch) computedPrice = sizeMatch.price;
-        } else if (prod.productType === 'single_price' && prod.basePrice != null) {
-          computedPrice = prod.basePrice;
-        }
-        return {
-          _id: oi._id,
-          productId: prod._id,
-          name: prod.name,
-          price: computedPrice,
-          quantity: oi.quantity,
-          size: oi.size,
-          image_url: prod.image_url,
-          category: prod.category,
-          preparedQuantity: oi.preparedQuantity ?? 0,
-          isPrepared: oi.isPrepared ?? false,
-        };
-      });
-      return {
-        _id: order._id,
-        source: order.source,
-        items,
-        totalAmount: order.totalAmount,
-        orderStatus: order.orderStatus,
-        paymentMethod: order.paymentMethod,
-        paymentStatus: order.paymentStatus,
-        orderType: order.orderType,
-        scheduledFor: order.scheduledFor,
-        deliveryAddress: order.deliveryAddress,
-        positionHistory: order.positionHistory,
-        lastPositionUpdate: order.lastPositionUpdate,
-        customer: customerData,
-        createdAt: order.createdAt,
-      };
-    });
+    return raw.map((o) => this.mapOrder(o));
   }
 
-  // Récupérer les commandes préparées du jour
   async getPreparedOrders(): Promise<any[]> {
-    const orders = await this.orderModel
+    const now = new Date();
+    const raw = await this.orderModel
       .find({
         orderStatus: OrderStatus.PREPARED,
-        createdAt: { $gte: startOfDay(new Date()), $lt: endOfDay(new Date()) },
+        createdAt: { $gte: startOfDay(now), $lt: endOfDay(now) },
       })
       .sort('-createdAt')
       .populate({
         path: 'items',
         model: 'OrderItem',
-        populate: {
-          path: 'productId',
-          model: 'Product',
-          select: 'name image_url productType basePrice sizes category',
-          populate: {
-            path: 'category',
-            model: 'Category',
-            select: 'name',
-          },
-        },
+        populate: this.getOrderItemPopulate(),
       })
-      .exec();
+      .populate(this.getUserPopulate())
+      .lean();
 
-    return orders.map(order => {
-      const items = (order.items as any[]).map(oi => {
-        const prod = oi.productId as any;
-        let computedPrice = oi.price;
-
-        if (prod.productType === 'multiple_sizes' && prod.sizes) {
-          const sizeMatch = prod.sizes.find((s: any) => s.name === oi.size);
-          if (sizeMatch) computedPrice = sizeMatch.price;
-        } else if (prod.productType === 'single_price' && prod.basePrice != null) {
-          computedPrice = prod.basePrice;
-        }
-
-        return {
-          _id: oi._id,
-          productId: prod._id,
-          name: prod.name,
-          price: computedPrice,
-          quantity: oi.quantity,
-          size: oi.size,
-          image_url: prod.image_url,
-          category: prod.category,
-          preparedQuantity: oi.preparedQuantity ?? 0,
-          isPrepared: oi.isPrepared ?? false,
-        };
-      });
-
-      const totalAmount = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
-      return {
-        _id: order._id,
-        source: order.source,
-        customer: order.customer,
-        items,
-        totalAmount,
-        orderStatus: order.orderStatus,
-        paymentMethod: order.paymentMethod,
-        paymentStatus: order.paymentStatus,
-        orderType: order.orderType,
-        deliveryAddress: order.deliveryAddress,
-        lastPositionUpdate: order.lastPositionUpdate,
-        positionHistory: order.positionHistory,
-        createdAt: order.createdAt,
-      };
-    });
+    return raw.map((o) => this.mapOrder(o));
   }
 
-  // Promote scheduled orders to in preparation if due
+  // ------------------------------------------------------------
+  // Promote scheduled orders to IN_PREPARATION if due
+  // ------------------------------------------------------------
   async promoteScheduledOrdersIfDue() {
-    if (!this.liveOrdersGateway.hasClients()) {
-      return;
-    }
+    if (!this.liveOrdersGateway.hasClients()) return;
     const now = new Date();
-    // On ne notifie que s'il y a eu des changements
     const result = await this.orderModel.updateMany(
       { orderStatus: OrderStatus.SCHEDULED, scheduledFor: { $lte: now } },
-      { $set: { orderStatus: OrderStatus.IN_PREPARATION } }
+      { $set: { orderStatus: OrderStatus.IN_PREPARATION } },
     );
     if (result.modifiedCount > 0) {
       this.liveOrdersGateway.sendUpdate();
     }
   }
 
-  // Cron pour promouvoir les commandes programmées à IN_PREPARATION
   @Cron(CronExpression.EVERY_10_SECONDS, { name: 'promoteScheduledOrders' })
   async promoteScheduledOrdersCron() {
     await this.promoteScheduledOrdersIfDue();
   }
 
-   // méthodes pour démarrer/stopper le cron à la volée
   startPromoteScheduledCron() {
     const job = this.schedulerRegistry.getCronJob('promoteScheduledOrders');
     job.start();
@@ -1008,25 +855,22 @@ export class OrderService implements OnModuleInit {
     job.stop();
   }
 
-  /**
-   * Like/unlike un OrderItem (produit dans une commande)
-   */
+  // ------------------------------------------------------------
+  // Like/unlike an OrderItem
+  // ------------------------------------------------------------
   async likeOrderItem(itemId: string, liked: boolean) {
     const item = await this.orderItemModel.findByIdAndUpdate(
       itemId,
       { liked },
-      { new: true }
+      { new: true },
     );
     if (!item) throw new NotFoundException('Order item not found');
     return item;
   }
 
-  /**
-   * Retourne l'état du bouton like pour un OrderItem donné
-   */
   async getOrderItemLiked(itemId: string): Promise<{ liked: boolean }> {
     const item = await this.orderItemModel.findById(itemId).select('liked').lean();
-    if (!item) throw new Error('OrderItem not found');
+    if (!item) throw new NotFoundException('OrderItem not found');
     return { liked: !!item.liked };
   }
 }

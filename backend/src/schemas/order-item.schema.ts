@@ -1,5 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
+import { IngredientWithQuantity, IngredientWithQuantitySchema } from './ingredient-with-quantity.schema';
 
 export type OrderItemDocument = OrderItem & Document;
 
@@ -34,6 +35,12 @@ export class OrderItem {
 
   @Prop({ default: false })
   liked?: boolean; // Indique si le client a aimé ce produit dans la commande
+
+  @Prop({ type: [IngredientWithQuantitySchema], default: [] })
+  baseIngredients: IngredientWithQuantity[];
+  
+  @Prop({ type: [IngredientWithQuantitySchema], default: [] })
+  ingredients: IngredientWithQuantity[];
 }
 
 export const OrderItemSchema = SchemaFactory.createForClass(OrderItem);
