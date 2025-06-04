@@ -9,7 +9,7 @@ interface UserState {
   profile: User | null;
   users: User[] | null;
   loading: boolean;
-  error: string | null;
+  error: string | string[] | null;
 }
 
 const initialState: UserState = {
@@ -28,11 +28,10 @@ export const fetchUserProfile = createAsyncThunk(
       const response = await api.get("/user/profile");
       return response.data as User;
     } catch (error: any) {
-      return rejectWithValue({
-        message:
-          error.response?.data?.message ||
-          "Erreur lors de la récupération du profil utilisateur",
-      });
+      return rejectWithValue(
+        error.response?.data?.message ||
+        "Erreur lors de la récupération du profil utilisateur"
+      );
     }
   }
 );
@@ -45,9 +44,9 @@ export const fetchAllUsers = createAsyncThunk(
       const response = await api.get("/user");
       return response.data as User[];
     } catch (error: any) {
-      return rejectWithValue({
-        message: error.response?.data?.message || "Error while loading users",
-      });
+      return rejectWithValue(
+        error.response?.data?.message || "Error while loading users"
+      );
     }
   }
 );
@@ -60,9 +59,23 @@ export const createUser = createAsyncThunk(
       const response = await api.post("/user", user);
       return response.data as User;
     } catch (error: any) {
-      return rejectWithValue({
-        message: error.response?.data?.message || "Error while creating user",
-      });
+      return rejectWithValue(
+        error.response?.data?.message || "Error while creating user"
+      );
+    }
+  }
+);
+
+export const createUserByAdmin = createAsyncThunk(
+  "user/createUserByAdmin",
+  async (user: Partial<User>, { rejectWithValue }) => {
+    try {
+      const response = await api.post("/user/create-by-admin", user);
+      return response.data as User;
+    } catch (error: any) {
+      return rejectWithValue(
+        error.response?.data?.message || "Error while creating user"
+      );
     }
   }
 );
@@ -75,9 +88,9 @@ export const updateUser = createAsyncThunk(
       const response = await api.put(`/user/${id}`, data);
       return response.data as User;
     } catch (error: any) {
-      return rejectWithValue({
-        message: error.response?.data?.message || "Error while updating user",
-      });
+      return rejectWithValue(
+        error.response?.data?.message || "Error while updating user"
+      );
     }
   }
 );
@@ -90,9 +103,9 @@ export const deleteUserById = createAsyncThunk(
       await api.delete(`/user/${id}`);
       return id;
     } catch (error: any) {
-      return rejectWithValue({
-        message: error.response?.data?.message || "Error while deleting user",
-      });
+      return rejectWithValue(
+        error.response?.data?.message || "Error while deleting user"
+      );
     }
   }
 );
@@ -135,7 +148,14 @@ const userSlice = createSlice({
     );
     builder.addCase(fetchUserProfile.rejected, (state, action) => {
       state.loading = false;
-      state.error = action.payload as string;
+      const payload = action.payload as any;
+      if (Array.isArray(payload)) {
+        state.error = payload;
+      } else if (Array.isArray(payload?.message)) {
+        state.error = payload.message;
+      } else {
+        state.error = typeof payload === 'string' ? payload : payload?.message || "Unknown error";
+      }
     });
     builder.addCase(fetchAllUsers.pending, (state) => {
       state.loading = true;
@@ -147,7 +167,14 @@ const userSlice = createSlice({
     });
     builder.addCase(fetchAllUsers.rejected, (state, action) => {
       state.loading = false;
-      state.error = action.payload as string;
+      const payload = action.payload as any;
+      if (Array.isArray(payload)) {
+        state.error = payload;
+      } else if (Array.isArray(payload?.message)) {
+        state.error = payload.message;
+      } else {
+        state.error = typeof payload === 'string' ? payload : payload?.message || "Unknown error";
+      }
     });
     builder.addCase(createUser.pending, (state) => {
       state.loading = true;
@@ -159,7 +186,33 @@ const userSlice = createSlice({
     });
     builder.addCase(createUser.rejected, (state, action) => {
       state.loading = false;
-      state.error = action.payload as string;
+      const payload = action.payload as any;
+      if (Array.isArray(payload)) {
+        state.error = payload;
+      } else if (Array.isArray(payload?.message)) {
+        state.error = payload.message;
+      } else {
+        state.error = typeof payload === 'string' ? payload : payload?.message || "Unknown error";
+      }
+    });
+    builder.addCase(createUserByAdmin.pending, (state) => {
+      state.loading = true;
+      state.error = null;
+    });
+    builder.addCase(createUserByAdmin.fulfilled, (state, action: PayloadAction<User>) => {
+      state.loading = false;
+      state.users = state.users ? [...state.users, action.payload] : [action.payload];
+    });
+    builder.addCase(createUserByAdmin.rejected, (state, action) => {
+      state.loading = false;
+      const payload = action.payload as any;
+      if (Array.isArray(payload)) {
+        state.error = payload;
+      } else if (Array.isArray(payload?.message)) {
+        state.error = payload.message;
+      } else {
+        state.error = typeof payload === 'string' ? payload : payload?.message || "Unknown error";
+      }
     });
     builder.addCase(updateUser.pending, (state) => {
       state.loading = true;
@@ -175,7 +228,14 @@ const userSlice = createSlice({
     });
     builder.addCase(updateUser.rejected, (state, action) => {
       state.loading = false;
-      state.error = action.payload as string;
+      const payload = action.payload as any;
+      if (Array.isArray(payload)) {
+        state.error = payload;
+      } else if (Array.isArray(payload?.message)) {
+        state.error = payload.message;
+      } else {
+        state.error = typeof payload === 'string' ? payload : payload?.message || "Unknown error";
+      }
     });
     builder.addCase(deleteUserById.pending, (state) => {
       state.loading = true;
@@ -187,10 +247,15 @@ const userSlice = createSlice({
     });
     builder.addCase(deleteUserById.rejected, (state, action) => {
       state.loading = false;
-      state.error = action.payload as string;
+      const payload = action.payload as any;
+      if (Array.isArray(payload)) {
+        state.error = payload;
+      } else if (Array.isArray(payload?.message)) {
+        state.error = payload.message;
+      } else {
+        state.error = typeof payload === 'string' ? payload : payload?.message || "Unknown error";
+      }
     });
-
-
   },
 });
 

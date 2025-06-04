@@ -8,6 +8,9 @@ export class Ingredient {
   @Prop({ required: true, unique: true })
   name: string;
 
+  @Prop({ required: true, default: 0 })
+  price: number;
+
   @Prop({ required: false, default: null })
   stock?: number;
 

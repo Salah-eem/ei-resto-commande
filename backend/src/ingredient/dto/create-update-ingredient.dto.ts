@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsNumber, IsOptional, IsString, MinLength, ValidateIf } from "class-validator";
+import { IsNotEmpty, IsNumber, IsOptional, IsPositive, IsString, MinLength, ValidateIf } from "class-validator";
 import { registerDecorator, ValidationArguments } from "class-validator";
 
 export function IsIngredientNameUnique(validationOptions?: any) {
@@ -31,6 +31,16 @@ export class CreateUpdateIngredientDto {
     @MinLength(3, { message: 'Ingredient name must be at least 3 characters' })
     @IsIngredientNameUnique({ message: 'Ingredient name must be unique' })
     name: string;
+
+    @IsNotEmpty()
+    @IsNumber()
+    @IsPositive()
+    price: number;
+
+    @IsOptional()
+    @IsNumber()
+    @IsPositive()
+    quantity?: number | null;
 
     @IsOptional()
     @IsNumber()

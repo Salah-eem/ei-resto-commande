@@ -61,6 +61,12 @@ export class UserController {
     return await this.userService.create(dto);
   }
 
+  @Roles(Role.Admin)
+  @Post('create-by-admin')
+  async createByAdmin(@Body() dto: UserDto) {
+    return await this.userService.createByAdmin(dto);
+  }
+
   @Put('photo')
   @UseInterceptors(FileInterceptor('file', {
     storage: diskStorage({

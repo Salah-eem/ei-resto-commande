@@ -41,14 +41,25 @@ export class CartController {
   @Public()
   @Patch(':userId/update')
   async updateQuantity(@Param('userId') userId: string, @Body() body: any) {
-    const { productId, size, quantity } = body;
-    return this.cartService.updateItemQuantity(userId, productId, size, quantity);
+    const { productId, size, quantity, ingredients } = body;
+    return this.cartService.updateItemQuantity(userId, productId, size, quantity, ingredients);
   }
 
   // ✅ Supprimer un article du panier
   @Public()
-  @Delete(':userId/:productId')
-  async removeItem(@Param('userId') userId: string, @Param('productId') productId: string) {
-    return this.cartService.removeItemFromCart(userId, productId);
+  @Delete(':userId/item/:itemId')
+  async removeItem(
+    @Param('userId') userId: string,
+    @Param('itemId') itemId: string
+  ) {
+    return this.cartService.removeItemFromCart(userId, itemId);
   }
+
+  // ✅ Vider le panier
+  @Public()
+  @Delete(':userId/clear')
+  async clearCart(@Param('userId') userId: string) {
+    return this.cartService.clearCart(userId);
+  }
+
 }

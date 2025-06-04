@@ -40,7 +40,7 @@ const MenuManager: React.FC = () => {
 
   const [prodDialogOpen, setProdDialogOpen] = useState(false);
   const [prodEdit, setProdEdit] = useState<Product | null>(null);
-  const [prodData, setProdData] = useState<Partial<Product>>({ productType: ProductType.SINGLE_PRICE });
+  const [prodData, setProdData] = useState<Partial<Product>>({ productType: ProductType.SINGLE_PRICE, ingredients: [] });
     
   const [ingredientDialogOpen, setIngredientDialogOpen] = useState(false);
   const [ingredientEdit, setIngredientEdit] = useState<Ingredient | null>(null);
@@ -155,6 +155,7 @@ const MenuManager: React.FC = () => {
       .transform(value => (isNaN(value) ? null : value))
       .positive('Stock must be a positive number')
       .integer('Stock must be an integer'),
+    ingredients: Yup.array().of(Yup.string()),
   });
 
   const validateIngredientName = async (name: string, ingredientId?: string) => {
@@ -177,6 +178,10 @@ const MenuManager: React.FC = () => {
         const isUnique = await validateIngredientName(value, ingredientEdit?._id);
         return isUnique;
       }),
+    price: Yup.number()
+      .typeError('Price must be a number')
+      .min(0, 'Price must be at least 0')
+      .required('Price is required'),
     stock: Yup.number()
       .nullable()
       .transform(value => (isNaN(value) ? null : value))
@@ -252,7 +257,7 @@ const MenuManager: React.FC = () => {
       }
       setProdDialogOpen(false);
       setProdEdit(null);
-      setProdData({ productType: ProductType.SINGLE_PRICE });
+      setProdData({ productType: ProductType.SINGLE_PRICE, ingredients: [] });
     } catch (e: any) {
       setErrors && setErrors({ name: e?.response?.data?.message || "Error saving product" });
       setError(e?.response?.data?.message || "Error saving product");
@@ -423,7 +428,7 @@ const MenuManager: React.FC = () => {
           {tab === 1 && (
             <Box>
               <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
-                <Button startIcon={<AddIcon />} variant="contained" onClick={() => { setProdEdit(null); setProdData({}); setProdDialogOpen(true); }}>Add Product</Button>
+                <Button startIcon={<AddIcon />} variant="contained" onClick={() => { setProdEdit(null); setProdData({ productType: ProductType.SINGLE_PRICE, ingredients: [] }); setProdDialogOpen(true); }}>Add Product</Button>
                 <TextField
                   label="Filter products"
                   value={productFilter}
@@ -463,7 +468,7 @@ const MenuManager: React.FC = () => {
                           <Typography variant="caption" color="text.secondary">{capitalizeFirstLetter(prod.category?.name)}</Typography>
                         </Box>
                         <Box>
-                          <IconButton onClick={() => { setProdEdit(prod); setProdData({ ...prod }); setProdDialogOpen(true); }}><EditIcon /></IconButton>
+                          <IconButton onClick={() => { setProdEdit(prod); setProdData({ ...prod, ingredients: prod.ingredients || [] }); setProdDialogOpen(true); }}><EditIcon /></IconButton>
                           <IconButton color="error" onClick={() => handleProdDelete(prod)}><DeleteIcon /></IconButton>
                         </Box>
                       </Paper>
@@ -697,6 +702,27 @@ const MenuManager: React.FC = () => {
                       <MenuItem key={cat._id} value={cat._id}>{cat.name}</MenuItem>
                     ))}
                   </TextField>
+
+                  {/* Ingrédients multi-sélection */}
+                  <TextField
+                    label="Ingredients"
+                    select
+                    name="ingredients"
+                    SelectProps={{ multiple: true }}
+                    value={values.ingredients || []}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setFieldValue('ingredients', Array.isArray(val) ? val.map(v => typeof v === 'string' ? v : v._id) : []);
+                    }}
+                    onBlur={handleBlur}
+                    fullWidth
+                    sx={{ mt: 2 }}
+                    helperText="Select one or more ingredients"
+                  >
+                    {ingredients.map(ing => (
+                      <MenuItem key={ing._id} value={ing._id}>{ing.name}</MenuItem>
+                    ))}
+                  </TextField>
                   <TextField
                     label="Stock (leave empty for unlimited)"
                     name="stock"
@@ -756,6 +782,13 @@ const MenuManager: React.FC = () => {
                 <DialogActions>
                   <Button onClick={() => setProdDialogOpen(false)} disabled={isSubmitting}>Cancel</Button>
                   <Button type="submit" variant="contained" disabled={isSubmitting || Object.keys(errors).length > 0}>Save</Button>
+                  { Object.keys(errors).length > 0 && (
+                    <Box sx={{ mt: 2 }}>
+                      <Typography variant="body2" color="error">
+                        {Object.values(errors).join(', ')}
+                      </Typography>
+                    </Box>
+                  )}
                 </DialogActions>
               </Form>
             )}
@@ -769,6 +802,7 @@ const MenuManager: React.FC = () => {
             initialValues={{
               _id: ingredientEdit?._id || "",
               name: ingredientEdit?.name || "",
+              price: ingredientEdit?.price ?? 0,
               stock: ingredientEdit?.stock ?? null,
               description: ingredientEdit?.description || "",
               image_url: ingredientEdit?.image_url || "",
@@ -826,6 +860,19 @@ const MenuManager: React.FC = () => {
                     helperText={touched.description && errors.description}
                     fullWidth
                     sx={{ mt: 2 }}
+                  />
+                  <TextField
+                    label="Price (€)"
+                    name="price"
+                    type="number"
+                    value={values.price}
+                    onChange={handleChange}
+                    onBlur={handleBlur}
+                    error={touched.price && Boolean(errors.price)}
+                    helperText={touched.price && errors.price}
+                    fullWidth
+                    sx={{ mt: 2 }}
+                    inputProps={{ min: 0, step: 0.01 }}
                   />
 
                   {/* Image upload */}

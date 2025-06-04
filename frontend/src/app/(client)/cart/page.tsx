@@ -16,7 +16,6 @@ import {
   Avatar,
   RadioGroup,
   FormControl,
-  FormLabel,
   FormControlLabel,
   Radio,
   TextField,
@@ -25,13 +24,12 @@ import {
   Add as AddIcon,
   Remove as RemoveIcon,
   Delete as DeleteIcon,
-  LocalShipping as LocalShippingIcon,
   Storefront as StorefrontIcon,
+  ShoppingCart as ShoppingCartIcon,
+  DeliveryDining as DeliveryDiningIcon,
   CreditCard as CreditCardIcon,
   Payment as PaymentIcon,
   AccountBalanceWallet as AccountBalanceWalletIcon,
-  ShoppingCart as ShoppingCartIcon,
-  DeliveryDining as DeliveryDiningIcon,
 } from "@mui/icons-material";
 import { loadStripe } from "@stripe/stripe-js";
 import { useFormik } from "formik";
@@ -47,11 +45,10 @@ import {
 } from "@/store/slices/cartSlice";
 import { fetchProducts } from "@/store/slices/productSlice";
 import { fetchRestaurantInfo } from "@/store/slices/restaurantSlice";
-
-import axios from "axios";
 import { useRouter } from "next/navigation";
 import { OrderType } from "@/types/order";
 import { RootState } from "@/store/store";
+import api from "@/lib/api";
 
 const STRIPE_PUBLIC_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLIC_KEY!;
 const API_URL = process.env.NEXT_PUBLIC_API_URL!;
@@ -65,26 +62,22 @@ const CartPage: React.FC = () => {
   const cartLoading = useAppSelector((s) => s.cart.loading);
   const cartError = useAppSelector((s) => s.cart.error);
 
-  const products = useAppSelector((s) => s.products.items);
-
-  const {
-    deliveryFee,
-    loading: feeLoading,
-    error: feeError,
-  } = useAppSelector((s) => s.restaurant);
+  const { deliveryFee, loading: feeLoading, error: feeError } = useAppSelector(
+    (s) => s.restaurant
+  );
 
   // Local state
   const [orderType, setOrderType] = useState<OrderType>(OrderType.PICKUP);
-  const [paymentMethod, setPaymentMethod] = useState<
-    "card" | "paypal" | "cash"
-  >("card");
+  const [paymentMethod, setPaymentMethod] = useState<"card" | "paypal" | "cash">(
+    "card"
+  );
   const [loadingPayment, setLoadingPayment] = useState(false);
   const [errorPayment, setErrorPayment] = useState<string | null>(null);
   const [selectedLat, setSelectedLat] = useState<number | null>(null);
   const [selectedLng, setSelectedLng] = useState<number | null>(null);
   const [selectedCountry, setSelectedCountry] = useState<string>("");
 
-  // Fetch cart, products & restaurant info
+  // Fetch cart & restaurant info
   useEffect(() => {
     if (userId) dispatch(fetchCart(userId));
     dispatch(fetchProducts());
@@ -94,20 +87,7 @@ const CartPage: React.FC = () => {
   // Préremplir les champs si l'utilisateur est connecté
   const userProfile = useAppSelector((state: RootState) => state.user.profile);
 
-  useEffect(() => {
-    if (userProfile) {
-      formik.setFieldValue("name", `${userProfile.firstName ?? ''} ${userProfile.lastName ?? ''}`.trim());
-      formik.setFieldValue("phone", userProfile.phone ?? "");
-      if (orderType === OrderType.DELIVERY && userProfile.addresses.length > 0) {
-        formik.setFieldValue("address", userProfile.addresses[0]?.street || "");
-        formik.setFieldValue("streetNumber", userProfile.addresses[0]?.streetNumber ? String(userProfile.addresses[0]?.streetNumber) : "");
-        formik.setFieldValue("city", userProfile.addresses[0]?.city || "");
-        formik.setFieldValue("postalCode", userProfile.addresses[0]?.postalCode || "");
-      }
-    }
-  }, [userProfile, orderType]);
-
-  // Toujours fournir une valeur string par défaut pour tous les champs contrôlés
+  // Formik pour le formulaire de commande
   const formik = useFormik({
     enableReinitialize: true,
     initialValues: {
@@ -120,7 +100,7 @@ const CartPage: React.FC = () => {
       instructions: "",
     },
     validationSchema:
-      orderType === "delivery"
+      orderType === OrderType.DELIVERY
         ? yup.object({
             name: yup.string().required("Name is required"),
             phone: yup.string().required("Phone is required"),
@@ -149,6 +129,40 @@ const CartPage: React.FC = () => {
         lng: selectedLng,
       };
 
+      // Calcul du sous-total incluant les extras de base (quantity > 1) et les extras supplémentaires
+      const subtotal = cartItems.reduce((sum, item) => {
+        let extrasUnitSum = 0;
+
+        // Pour chaque baseIngredient : si found.quantity > 1, on ajoute (found.quantity - 1) * basePrice
+        (item.baseIngredients || []).forEach((baseIng: any) => {
+          const found = (item.ingredients || []).find(
+            (ing: any) => ing._id === baseIng._id
+          );
+          const basePrice = baseIng.price || 0;
+          if (found && found.quantity && found.quantity > 1) {
+            extrasUnitSum += basePrice * (found.quantity - 1);
+          }
+        });
+
+        // Ensuite, pour les ingrédients qui ne sont pas dans baseIngredients
+        (item.ingredients || [])
+          .filter(
+            (ing: any) =>
+              !(item.baseIngredients || []).some(
+                (baseIng: any) => baseIng._id === ing._id
+              )
+          )
+          .forEach((extra: any) => {
+            extrasUnitSum += (extra.price || 0) * (extra.quantity || 1);
+          });
+
+        const unitPriceWithExtras = item.price + extrasUnitSum;
+        return sum + unitPriceWithExtras * item.quantity;
+      }, 0);
+
+      const fee = orderType === "delivery" ? deliveryFee ?? 0 : 0;
+      const total = subtotal + fee;
+
       const payload = {
         userId,
         customer: {
@@ -164,19 +178,19 @@ const CartPage: React.FC = () => {
       try {
         if (paymentMethod === "card") {
           const stripe = await loadStripe(STRIPE_PUBLIC_KEY);
-          const { data } = await axios.post(
+          const { data } = await api.post(
             `${API_URL}/payment/stripe`,
             payload
           );
           await stripe?.redirectToCheckout({ sessionId: data.sessionId });
         } else if (paymentMethod === "paypal") {
-          const { data } = await axios.post(
+          const { data } = await api.post(
             `${API_URL}/payment/paypal`,
             payload
           );
           window.location.href = data.approvalUrl;
         } else {
-          const { data } = await axios.post(`${API_URL}/payment/cash`, payload);
+          const { data } = await api.post(`${API_URL}/payment/cash`, payload);
           if (data.success) {
             dispatch(clearCart(userId));
             router.push("/order-confirmation?success=true");
@@ -192,19 +206,82 @@ const CartPage: React.FC = () => {
     },
   });
 
-  const subtotal = cartItems.reduce((sum, i) => sum + i.price * i.quantity, 0);
+  // Préremplissage automatique des champs depuis le profil
+  useEffect(() => {
+    if (userProfile) {
+      formik.setFieldValue(
+        "name",
+        `${userProfile.firstName ?? ""} ${userProfile.lastName ?? ""}`.trim()
+      );
+      formik.setFieldValue("phone", userProfile.phone ?? "");
+      if (
+        orderType === OrderType.DELIVERY &&
+        userProfile.addresses.length > 0
+      ) {
+        formik.setFieldValue("address", userProfile.addresses[0]?.street || "");
+        formik.setFieldValue(
+          "streetNumber",
+          userProfile.addresses[0]?.streetNumber
+            ? String(userProfile.addresses[0]?.streetNumber)
+            : ""
+        );
+        formik.setFieldValue("city", userProfile.addresses[0]?.city || "");
+        formik.setFieldValue(
+          "postalCode",
+          userProfile.addresses[0]?.postalCode || ""
+        );
+      }
+    }
+  }, [userProfile, orderType]);
+
+  // Calcul du sous-total ici pour l'affichage
+  const subtotal = cartItems.reduce((sum, item) => {
+    let extrasUnitSum = 0;
+
+    (item.baseIngredients || []).forEach((baseIng: any) => {
+      const found = (item.ingredients || []).find(
+        (ing: any) => ing._id === baseIng._id
+      );
+      const basePrice = baseIng.price || 0;
+      if (found && found.quantity && found.quantity > 1) {
+        extrasUnitSum += basePrice * (found.quantity - 1);
+      }
+    });
+
+    (item.ingredients || [])
+      .filter(
+        (ing: any) =>
+          !(item.baseIngredients || []).some(
+            (baseIng: any) => baseIng._id === ing._id
+          )
+      )
+      .forEach((extra: any) => {
+        extrasUnitSum += (extra.price || 0) * (extra.quantity || 1);
+      });
+
+    const unitPriceWithExtras = item.price + extrasUnitSum;
+    return sum + unitPriceWithExtras * item.quantity;
+  }, 0);
+
   const fee = orderType === "delivery" ? deliveryFee ?? 0 : 0;
   const total = subtotal + fee;
 
   const handleQuantityChange = (
+    itemId: string,
     productId: string,
     size: string | undefined,
-    qty: number
+    qty: number,
+    ingredients?: any[]
   ) => {
     if (!userId) return;
-    if (qty > 0)
-      dispatch(updateCartQuantity({ userId, productId, size, quantity: qty }));
-    else dispatch(removeFromCart({ userId, productId, size }));
+
+    if (qty > 0) {
+      dispatch(
+        updateCartQuantity({ userId, productId, size, quantity: qty, ingredients })
+      );
+    } else {
+      dispatch(removeFromCart({ userId, itemId }));
+    }
   };
 
   if (cartLoading && cartItems.length === 0)
@@ -262,96 +339,227 @@ const CartPage: React.FC = () => {
         </Typography>
       ) : (
         <Grid container spacing={4}>
-          {/* Liste des items */}
+          {/* Item list */}
           <Grid item xs={12} md={7}>
             <Stack spacing={2}>
-              {cartItems.map((item) => (
-                <Paper
-                  key={`${item.productId}-${item.size || "std"}`}
-                  sx={{
-                    display: "flex",
-                    alignItems: "center",
-                    p: 2,
-                    borderRadius: 2,
-                  }}
-                >
-                  <Avatar
-                    src={`${API_URL}/${item.image_url}`}
-                    variant="rounded"
-                    sx={{ width: 80, height: 80, mr: 2 }}
-                  />
-                  <Box sx={{ flex: 1 }}>
-                    <Typography fontWeight="bold">{item.name}</Typography>
-                    {item.size && (
-                      <Typography variant="body2">Size: {item.size}</Typography>
-                    )}
-                    <Typography variant="body2">
-                      {item.price.toFixed(2)} € x {item.quantity}
-                    </Typography>
-                  </Box>
-                  <Stack direction="row" spacing={1} alignItems="center">
-                    <IconButton
-                      onClick={() =>
-                        handleQuantityChange(
-                          item.productId,
-                          item.size,
-                          item.quantity - 1
-                        )
-                      }
-                    >
-                      <RemoveIcon />
-                    </IconButton>
-                    <TextField
-                      type="number"
-                      size="small"
-                      value={item.quantity}
-                      inputProps={{ min: 1, style: { width: 50, textAlign: "center" } }}
-                      onChange={(e) => {
-                        const val = parseInt(e.target.value, 10);
-                        if (!isNaN(val) && val > 0) {
-                          handleQuantityChange(item.productId, item.size, val);
-                        }
-                      }}
-                      onBlur={(e) => {
-                        // Si l'utilisateur efface tout, on remet 1
-                        if (!e.target.value || parseInt(e.target.value, 10) < 1) {
-                          handleQuantityChange(item.productId, item.size, 1);
-                        }
-                      }}
-                      sx={{ mx: 1 }}
+              {cartItems.map((item) => {
+                let extrasUnitSum = 0;
+                (item.baseIngredients || []).forEach((baseIng: any) => {
+                  const found = (item.ingredients || []).find(
+                    (ing: any) => ing._id === baseIng._id
+                  );
+                  const basePrice = baseIng.price || 0;
+                  if (found && found.quantity && found.quantity > 1) {
+                    extrasUnitSum += basePrice * (found.quantity - 1);
+                  }
+                });
+                (item.ingredients || [])
+                  .filter(
+                    (ing: any) =>
+                      !(item.baseIngredients || []).some(
+                        (baseIng: any) => baseIng._id === ing._id
+                      )
+                  )
+                  .forEach((extra: any) => {
+                    extrasUnitSum += (extra.price || 0) * (extra.quantity || 1);
+                  });
+                const unitPriceWithExtras = item.price + extrasUnitSum;
+                const lineTotal = unitPriceWithExtras * item.quantity;
+                const hasExtras = extrasUnitSum > 0;
+
+                return (
+                  <Paper
+                    key={item._id}
+                    sx={{
+                      display: "flex",
+                      alignItems: "flex-start",
+                      p: 2,
+                      borderRadius: 2,
+                    }}
+                  >
+                    <Avatar
+                      src={`${API_URL}/${item.image_url}`}
+                      variant="rounded"
+                      sx={{ width: 80, height: 80, mr: 2, mt: 1 }}
                     />
-                    <IconButton
-                      onClick={() =>
-                        handleQuantityChange(
-                          item.productId,
-                          item.size,
-                          item.quantity + 1
-                        )
-                      }
-                    >
-                      <AddIcon />
-                    </IconButton>
-                    <IconButton
-                      color="error"
-                      onClick={() =>
-                        dispatch(
-                          removeFromCart({
-                            userId,
-                            productId: item.productId,
-                            size: item.size,
-                          })
-                        )
-                      }
-                    >
-                      <DeleteIcon />
-                    </IconButton>
-                  </Stack>
-                </Paper>
-              ))}
+                    <Box sx={{ flex: 1 }}>
+                      <Typography fontWeight="bold">{item.name}</Typography>
+                      {item.size && (
+                        <Typography variant="body2">
+                          Size: {item.size}
+                        </Typography>
+                      )}
+                      {hasExtras && (
+                        <Typography
+                          variant="body2"
+                          sx={{ mb: 1 }}
+                        >
+                          UNIT PRICE (with extras):{" "}
+                          <strong>{unitPriceWithExtras.toFixed(2)} €</strong>
+                        </Typography>
+                      )}
+                      <Typography variant="body2" sx={{ mb: 1 }}>
+                        Quantity: {item.quantity} →{" "}
+                        <strong>
+                          {hasExtras
+                            ? lineTotal.toFixed(2)
+                            : (item.price * item.quantity).toFixed(2)}{" "}
+                          €
+                        </strong>
+                      </Typography>
+
+                      {/* Ingredients display */}
+                      {hasExtras && item.baseIngredients && item.ingredients && (
+                        <Box sx={{ mb: 1 }}>
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                          >
+                            Ingredients:
+                          </Typography>
+                          <ul style={{ margin: 0, paddingLeft: 16 }}>
+                            {/* 
+                                • “No {name}” if removed
+                                • “{name} xN” if quantity > 1
+                                • if quantity === 1 → display nothing
+                            */}
+                            {(item.baseIngredients || []).map((baseIng: any) => {
+                              const found = (item.ingredients || []).find(
+                                (ing: any) => ing._id === baseIng._id
+                              );
+                              // removed → “No {name}”
+                              if (!found) {
+                                return (
+                                  <li
+                                    key={baseIng._id}
+                                    style={{ color: "#888" }}
+                                  >
+                                    No {baseIng.name}
+                                  </li>
+                                );
+                              }
+                              // quantity > 1 → “{name} xN”
+                              if (found.quantity > 1) {
+                                return (
+                                  <li key={baseIng._id}>
+                                    {baseIng.name} x{found.quantity}
+                                  </li>
+                                );
+                              }
+                              // quantity === 1 → display nothing
+                              return null;
+                            })}
+
+                            {/* Added extras */}
+                            {((item.ingredients || []).filter(
+                              (ing: any) =>
+                                !(item.baseIngredients || []).some(
+                                  (baseIng: any) => baseIng._id === ing._id
+                                )
+                            )).map((extra: any) => (
+                              <li
+                                key={extra._id}
+                                style={{ color: "#1976d2" }}
+                              >
+                                + {extra.name}
+                                {extra.quantity && extra.quantity > 1
+                                  ? ` x${extra.quantity}`
+                                  : ""}
+                                {extra.price
+                                  ? ` (+${(
+                                      extra.price *
+                                      (extra.quantity || 1)
+                                    ).toFixed(2)}€)`
+                                  : ""}
+                              </li>
+                            ))}
+                          </ul>
+                        </Box>
+                      )}
+                    </Box>
+
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <IconButton
+                        onClick={() =>
+                          handleQuantityChange(
+                            item._id!,
+                            item.productId,
+                            item.size,
+                            item.quantity - 1,
+                            item.ingredients
+                          )
+                        }
+                      >
+                        <RemoveIcon />
+                      </IconButton>
+
+                      <TextField
+                        type="number"
+                        size="small"
+                        value={item.quantity}
+                        inputProps={{
+                          min: 1,
+                          style: { width: 50, textAlign: "center" },
+                        }}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value, 10);
+                          if (!isNaN(val) && val > 0) {
+                            handleQuantityChange(
+                              item._id!,
+                              item.productId,
+                              item.size,
+                              val,
+                              item.ingredients
+                            );
+                          }
+                        }}
+                        onBlur={(e) => {
+                          if (
+                            !e.target.value ||
+                            parseInt(e.target.value, 10) < 1
+                          ) {
+                            handleQuantityChange(
+                              item._id!,
+                              item.productId,
+                              item.size,
+                              1,
+                              item.ingredients
+                            );
+                          }
+                        }}
+                        sx={{ mx: 1 }}
+                      />
+
+                      <IconButton
+                        onClick={() =>
+                          handleQuantityChange(
+                            item._id!,
+                            item.productId,
+                            item.size,
+                            item.quantity + 1,
+                            item.ingredients
+                          )
+                        }
+                      >
+                        <AddIcon />
+                      </IconButton>
+
+                      <IconButton
+                        color="error"
+                        onClick={() =>
+                          dispatch(removeFromCart({ userId, itemId: item._id! }))
+                        }
+                      >
+                        <DeleteIcon />
+                      </IconButton>
+                    </Stack>
+                  </Paper>
+                );
+              })}
             </Stack>
           </Grid>
 
-          {/* Récap & Formulaire */}
+          {/* Summary & Order Form */}
           <Grid item xs={12} md={5}>
             <Card
               sx={{
@@ -370,7 +578,9 @@ const CartPage: React.FC = () => {
                   <RadioGroup
                     row
                     value={orderType}
-                    onChange={(e) => setOrderType(e.target.value as OrderType)}
+                    onChange={(e) =>
+                      setOrderType(e.target.value as OrderType)
+                    }
                   >
                     <FormControlLabel
                       value="pickup"
@@ -464,9 +674,7 @@ const CartPage: React.FC = () => {
                       error={Boolean(
                         formik.touched.address && formik.errors.address
                       )}
-                      helperText={
-                        formik.touched.address && formik.errors.address
-                      }
+                      helperText={formik.touched.address && formik.errors.address}
                     />
 
                     <TextField
@@ -477,8 +685,7 @@ const CartPage: React.FC = () => {
                       onChange={formik.handleChange}
                       onBlur={formik.handleBlur}
                       error={Boolean(
-                        formik.touched.streetNumber &&
-                          formik.errors.streetNumber
+                        formik.touched.streetNumber && formik.errors.streetNumber
                       )}
                       helperText={
                         formik.touched.streetNumber &&
@@ -515,7 +722,7 @@ const CartPage: React.FC = () => {
                 )}
 
                 <TextField
-                  label="Instructions (opt.)"
+                  label="Instructions (optional)"
                   name="instructions"
                   fullWidth
                   multiline

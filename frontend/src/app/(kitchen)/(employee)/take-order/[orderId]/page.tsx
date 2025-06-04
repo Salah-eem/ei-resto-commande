@@ -29,9 +29,6 @@ import {
 import { Remove, ShoppingCart, ArrowBackIosNew } from "@mui/icons-material";
 import { Formik, Form, FieldArray } from "formik";
 import * as Yup from "yup";
-import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
-import { DateTimePicker }      from '@mui/x-date-pickers/DateTimePicker';
-import { AdapterDateFns }      from '@mui/x-date-pickers/AdapterDateFns';
 import { fetchProducts } from "@/store/slices/productSlice";
 import { fetchCategories } from "@/store/slices/categorySlice";
 import {
@@ -42,27 +39,31 @@ import {
 import { fetchRestaurantInfo } from "@/store/slices/restaurantSlice";
 import { useAppDispatch, useAppSelector } from "@/store/slices/hooks";
 import { useParams } from "next/navigation";
-
 import { Order, OrderType, PaymentMethod, PaymentStatus } from "@/types/order";
 import { Address } from "@/types/address";
-import { CartItem } from "@/types/cartItem";
 import { Product, ProductType } from "@/types/product";
 import { Category } from "@/types/category";
-import NominatimAutocomplete from "@/components/NominatimAutocomplete";
-import { get } from "lodash";
 import GeoapifyAutocomplete from "@/components/GeoapifyAutocomplete";
-import { OrderItem } from "@/types/orderItem";
-import { isSameDay } from "date-fns";
 import ProtectRoute from "@/components/ProtectRoute";
 import { Role } from "@/types/user";
+import IngredientDialog from "@/components/IngredientDialog";
+import { Ingredient } from "@/types/ingredient";
+import { OrderItem } from "@/types/orderItem";
+import { fetchIngredients } from "@/store/slices/ingredientSlice";
 
-// 🎯 Type uniquement pour les valeurs du formulaire
+// 🎯 Type pour les valeurs du formulaire
 type OrderFormValues = {
   customerName: string;
   phoneNumber: string;
   orderType: OrderType;
   deliveryAddress: Partial<Address>;
-  orderItems: OrderItem[];
+  orderItems: Array<
+    OrderItem & {
+      baseIngredients: Ingredient[];
+      removedBaseIds: string[];
+      extraIngredientIds: string[];
+    }
+  >;
   paymentMethod: PaymentMethod;
   paymentStatus: PaymentStatus;
   scheduledFor?: string | null;
@@ -78,10 +79,9 @@ const validationSchema = Yup.object().shape({
     then: (schema) =>
       schema.shape({
         street: Yup.string().required("Street is Required"),
-        streetNumber: Yup.string().required("Street Number is Required"),
+        streetNumber: Yup.number().required("Street Number is Required"),
         city: Yup.string().required("City is Required"),
         postalCode: Yup.string().required("Postal Code is Required"),
-        // country: Yup.string().required("Required"),
       }),
     otherwise: (schema) => schema.notRequired(),
   }),
@@ -92,11 +92,15 @@ const validationSchema = Yup.object().shape({
         name: Yup.string().required(),
         price: Yup.number().required(),
         quantity: Yup.number().min(1).required(),
-        size: Yup.string().optional(),
-        category: Yup.object().shape({
-          _id: Yup.string().required(),
-          name: Yup.string().required(),
-        }),
+        baseIngredients: Yup.array().of(
+          Yup.object().shape({
+            _id: Yup.string().required(),
+            name: Yup.string().required(),
+            price: Yup.number().required(),
+          })
+        ),
+        removedBaseIds: Yup.array().of(Yup.string()),
+        extraIngredientIds: Yup.array().of(Yup.string()),
       })
     )
     .min(1, "Add at least one product"),
@@ -106,12 +110,10 @@ const validationSchema = Yup.object().shape({
   scheduledFor: Yup.string()
     .nullable()
     .test(
-      'scheduledFor-required-if-filled',
-      'Scheduled date/time is required if set',
+      "scheduledFor-required-if-filled",
+      "Scheduled date/time is required if set",
       function (value) {
-        // Autorise null ou string non vide (pour DELIVERY ou PICKUP)
-        if (value === null || value === undefined || value === '') return true;
-        // Vérifie que c'est une date valide (format datetime-local)
+        if (value === null || value === undefined || value === "") return true;
         return !isNaN(Date.parse(value));
       }
     ),
@@ -144,19 +146,17 @@ const TakeOrderPage: React.FC = () => {
   const from = searchParams.get("from");
 
   const dispatch = useAppDispatch();
-  const {
-    deliveryFee,
-    loading: feeLoading,
-    error,
-  } = useAppSelector((state) => state.restaurant);
+  const { deliveryFee, loading: feeLoading } = useAppSelector(
+    (state) => state.restaurant
+  );
   const products = useAppSelector((state) => state.products.items) as Product[];
   const categories = useAppSelector(
     (state) => state.categories.items
   ) as Category[];
-  const isLoading = useAppSelector((state) => state.products.loading);
+  const isLoadingProducts = useAppSelector((state) => state.products.loading);
   const order = useAppSelector((state) => state.orders.order) as Order;
 
-  // const [formValues, setFormValues] = useState(initialFormValues);
+  // États pour pagination, filtres, etc.
   const [tab, setTab] = useState(0);
   const [selectedCategory, setSelectedCategory] = useState("");
   const [search, setSearch] = useState("");
@@ -172,6 +172,47 @@ const TakeOrderPage: React.FC = () => {
 
   const productsPerPage = 6;
 
+  // États pour le dialog d'ingrédients
+  const [openDialogForIndex, setOpenDialogForIndex] = useState<number | null>(
+    null
+  );
+  const [dialogRemovedBaseIds, setDialogRemovedBaseIds] = useState<string[]>(
+    []
+  );
+  const [dialogExtraIds, setDialogExtraIds] = useState<string[]>([]);
+
+  // all ingredients global (pour priceCalculator et pour afficher tout)
+  const allIngredients = useAppSelector(
+    (state) => state.ingredients.items
+  ) as Ingredient[];
+
+  // Récupère l’info restaurant
+  useEffect(() => {
+    dispatch(fetchRestaurantInfo());
+  }, [dispatch]);
+
+  // Charge une commande si on est en mode édition
+  useEffect(() => {
+    if (!isCreateMode && orderId) {
+      dispatch(fetchOrder(orderId));
+    }
+  }, [dispatch, orderId, isCreateMode]);
+
+  // Charge produits et catégories
+  useEffect(() => {
+    dispatch(fetchProducts());
+    dispatch(fetchCategories());
+    dispatch(fetchIngredients());
+  }, [dispatch]);
+
+  // Initialise la première catégorie par défaut
+  useEffect(() => {
+    if (categories.length > 0 && !selectedCategory) {
+      setSelectedCategory(categories[0]._id);
+    }
+  }, [categories]);
+
+  // Valeurs initiales dynamiques (édition ou création)
   const getInitialFormValues = (): OrderFormValues => {
     if (!isCreateMode && order) {
       return {
@@ -187,42 +228,57 @@ const TakeOrderPage: React.FC = () => {
           lat: order.deliveryAddress?.lat,
           lng: order.deliveryAddress?.lng,
         },
-        orderItems: order.items || [],
+        orderItems: order.items.map((oi) => ({
+          productId: oi.productId,
+          name: oi.name,
+          price: oi.price,
+          quantity: oi.quantity,
+          size: oi.size,
+          category: oi.category,
+          image_url: oi.image_url,
+          // on récupère la liste des ingrédients de base venant du backend
+          baseIngredients: (oi.baseIngredients || []).map((b: any) => ({
+            _id: b._id,
+            ingredient: {
+              _id: b._id,
+              name: b.name,
+              price: b.price,
+              stock: b.stock ?? 0,
+            },
+            quantity: b.quantity ?? 1,
+          })),
+          removedBaseIds: (oi.baseIngredients || [])
+            .filter(base => {
+              const ingQty = (oi.ingredients || []).find(i => i._id === base._id)?.quantity || 0;
+              const baseQty = base.quantity || 1;
+              return ingQty < baseQty;
+            })
+            .map((ing) => ing._id),
+          extraIngredientIds: (() => {
+            const ingredientCounts: Record<string, number> = {};
+            (oi.ingredients || []).forEach((ing) => {
+              ingredientCounts[ing._id] = (ingredientCounts[ing._id] || 0) + (ing.quantity || 1);
+            });
+            (oi.baseIngredients || []).forEach((b) => {
+              ingredientCounts[b._id] = (ingredientCounts[b._id] || 0) - (b.quantity || 1);
+            });
+            return Object.entries(ingredientCounts)
+              .filter(([_, qty]) => qty > 0)
+              .flatMap(([id, qty]) => Array(qty).fill(id));
+          })(),
+          ingredients: oi.ingredients,
+        })),
         paymentMethod: order.paymentMethod,
         paymentStatus: order.paymentStatus,
         scheduledFor: order.scheduledFor
-          ? new Date(order.scheduledFor).toLocaleString('sv-SE', { hour12: false }).replace(' ', 'T').slice(0, 16)
+          ? new Date(order.scheduledFor).toISOString().substring(0, 16)
           : null,
       };
     }
     return initialFormValues;
   };
 
-  // récupère l’info restaurant
-  useEffect(() => {
-    dispatch(fetchRestaurantInfo());
-  }, [dispatch]);
-
-  // Charge une commande si l'ID est présent dans l'URL
-  useEffect(() => {
-    if (!isCreateMode && orderId) {
-      dispatch(fetchOrder(orderId));
-    }
-  }, [dispatch, orderId, isCreateMode]);
-
-  // ▶️ Charge produits et catégories
-  useEffect(() => {
-    dispatch(fetchProducts());
-    dispatch(fetchCategories());
-  }, [dispatch]);
-
-  // ⬅️ Par défaut, sélectionne la première catégorie
-  useEffect(() => {
-    if (categories.length > 0 && !selectedCategory) {
-      setSelectedCategory(categories[0]._id);
-    }
-  }, [categories]);
-
+  // Filtrage & pagination des produits
   const filteredProducts = products
     .filter((p) => p.category._id === selectedCategory)
     .filter((p) => p.name.toLowerCase().includes(search.toLowerCase()));
@@ -233,26 +289,77 @@ const TakeOrderPage: React.FC = () => {
   );
   const totalPages = Math.ceil(filteredProducts.length / productsPerPage);
 
-  const calculateTotal = (items: OrderItem[], orderType: OrderType) =>
-    items
-      .reduce(
-        (sum, item) => sum + item.price * item.quantity,
-        orderType === OrderType.DELIVERY ? deliveryFee ?? 0 : 0
-      )
-      .toFixed(2);
+  // Calcul du total (incluant hypothétique deliveryFee)
+ const calculateTotal = (
+  items: OrderFormValues["orderItems"],
+  orderType: OrderType
+) =>
+  (
+    items.reduce((sum, item) => {
+      // 1) on calcule le coût des extras pour 1 unité
+      const extrasCost = item.extraIngredientIds.reduce((acc, id) => {
+        const ing = allIngredients.find((i) => i._id === id);
+        return acc + (ing?.price ?? 0);
+      }, 0);
 
+      // 2) on calcule le coût unitaire (prix de base + extras)
+      const unitTotal = item.price + extrasCost;
+
+      // 3) on multiplie par la quantité
+      return sum + unitTotal * item.quantity;
+    }, 0) + (orderType === OrderType.DELIVERY ? deliveryFee ?? 0 : 0)
+  ).toFixed(2);
+
+
+  // Soumission du formulaire
   const handleSubmit = async (values: OrderFormValues, { resetForm }: any) => {
-    setIsSubmitting(true); // ⏳ Démarre le loader
+    setIsSubmitting(true);
     try {
+      // Prépare le payload en transformant nos champs en ce que le backend attend
       const payload: Partial<Order> = {
         customer: {
           name: values.customerName,
           phone: values.phoneNumber,
         },
-        items: values.orderItems,
-        totalAmount: values.orderItems.reduce(
-          (sum, item) => sum + item.price * item.quantity,
-          0
+        items: values.orderItems.map((item) => {
+          // 1) Construire un map { [ingId]: quantité_totale }
+          const ingredientCountMap: Record<string, number> = {};
+
+          // – On ajoute chaque base non retirée
+          item.baseIngredients
+            .filter((b) => !item.removedBaseIds.includes(b._id))
+            .forEach((b) => {
+              ingredientCountMap[b._id] = (ingredientCountMap[b._id] || 0) + 1;
+            });
+
+          // – On ajoute chaque extra sélectionné
+          item.extraIngredientIds.forEach((id) => {
+            ingredientCountMap[id] = (ingredientCountMap[id] || 0) + 1;
+          });
+
+          // 2) Transformer le map en tableau [{ _id, quantity }, …]
+          const mergedIngredients = Object.entries(ingredientCountMap).map(
+            ([id, qty]) => ({
+              _id: id,
+              quantity: qty,
+            })
+          );
+
+          // 3) Envoyer ce tableau dans le champ que le backend attend
+          return {
+            productId: item.productId,
+            name: item.name,
+            price: item.price,      
+            quantity: item.quantity,
+            size: item.size,
+            category: item.category,
+            image_url: item.image_url,
+            baseIngredients: item.baseIngredients,
+            ingredients: mergedIngredients,
+          };
+        }),
+        totalAmount: parseFloat(
+          calculateTotal(values.orderItems, values.orderType)
         ),
         orderType: values.orderType,
         deliveryAddress:
@@ -269,26 +376,30 @@ const TakeOrderPage: React.FC = () => {
             : undefined,
         paymentMethod: values.paymentMethod,
         paymentStatus: values.paymentStatus,
-        scheduledFor:
-          values.scheduledFor //&& isCreateMode
-            ? values.scheduledFor // string locale du champ input (YYYY-MM-DDTHH:mm)
-            : undefined,
+        scheduledFor: values.scheduledFor || undefined,
       };
 
       let result;
       if (isCreateMode) {
         result = await dispatch(createOrder(payload) as any);
       } else {
-        result = await dispatch(updateOrder({ orderId, orderData: payload }) as any);
+        result = await dispatch(
+          updateOrder({ orderId, orderData: payload }) as any
+        );
         await dispatch(fetchOrder(orderId) as any);
-      }      
-      // Simplified error extraction
+      }
+
+      // Gestion simple des erreurs
       const getErrorMessage = (res: any) => {
         return (
           res?.error?.data?.message ||
           res?.payload?.message ||
-          (typeof res?.error === 'string' && res.error !== 'rejected' && res.error) ||
-          (typeof res?.payload === 'string' && res.payload !== 'rejected' && res.payload) ||
+          (typeof res?.error === "string" &&
+            res.error !== "rejected" &&
+            res.error) ||
+          (typeof res?.payload === "string" &&
+            res.payload !== "rejected" &&
+            res.payload) ||
           res?.error?.message ||
           res?.error?.statusText ||
           res?.error?.status ||
@@ -298,37 +409,37 @@ const TakeOrderPage: React.FC = () => {
       };
       const errorMsg = getErrorMessage(result);
       if (result?.error || result?.payload?.message) {
-        setAlert({ type: "error", message: errorMsg || '❌ An error occurred.' });
+        setAlert({
+          type: "error",
+          message: errorMsg || "❌ An error occurred.",
+        });
         return;
       }
 
       setAlert({
         type: "success",
         message: isCreateMode
-          ? "Order taked successfully!"
+          ? "Order taken successfully!"
           : "Order updated successfully!",
       });
       resetForm();
       setTab(0);
     } catch (err: any) {
-      // Fallback for unexpected errors
-      let errorMsg = err?.response?.data?.message || err?.message || '❌ An error occurred.';
+      let errorMsg =
+        err?.response?.data?.message || err?.message || "❌ An error occurred.";
       setAlert({ type: "error", message: errorMsg });
     } finally {
-      setIsSubmitting(false); // ✅ Stoppe le loader quoi qu’il arrive
+      setIsSubmitting(false);
     }
   };
 
-  //  Fonction de retour en arrière
+  // Fonction Retour
   const handleBack = () => {
     if (from) {
-      // si on a un param ?from=…
       router.push(from);
     } else if (typeof window !== "undefined" && window.history.length > 1) {
-      // sinon on revient d’où on vient
       router.back();
     } else {
-      // fallback
       router.push("/view-orders");
     }
   };
@@ -341,9 +452,10 @@ const TakeOrderPage: React.FC = () => {
             <ArrowBackIosNew />
           </IconButton>
           <Typography variant="h4" sx={{ ml: 1 }}>
-            {isCreateMode ? "Take an order" : "Order details"}
+            {isCreateMode ? "Take an Order" : "Order Details"}
           </Typography>
         </Box>
+
         <Paper sx={{ mt: 3, p: 3 }}>
           <Tabs value={tab} onChange={(_, newTab) => setTab(newTab)} centered>
             <Tab label="Client" />
@@ -358,35 +470,39 @@ const TakeOrderPage: React.FC = () => {
             </Box>
           ) : (
             <Formik
-              key={orderId} // 🔑 Force un nouveau Formik à chaque changement d'ID
+              key={orderId}
               initialValues={getInitialFormValues()}
               enableReinitialize
               validationSchema={validationSchema}
               onSubmit={handleSubmit}
             >
               {({ values, errors, touched, handleChange, setFieldValue }) => (
-                <Form>                   
+                <Form>
+                  {/* Affichage des erreurs globales */}
                   {Object.keys(errors).length > 0 && (
-                      <Alert severity="error" sx={{ mb: 2 }}>
-                          <ul style={{ margin: 0, paddingLeft: 16 }}>
-                          {Object.entries(errors).map(([field, message]) => (
-                              <li key={field}>
-                              {typeof message === "object" ? (
-                                  <ul style={{ margin: 0, paddingLeft: 16 }}>
-                                  {Object.entries(message).map(([subField, subMessage]) => (
-                                      <li key={subField}>
-                                          <strong>{subMessage}</strong>
-                                      </li>
-                                  ))}
-                                  </ul>
-                              ) : (
-                                  <strong>{message}</strong>
-                              )}
-                              </li>
-                          ))}
-                          </ul>
-                      </Alert>
+                    <Alert severity="error" sx={{ mb: 2 }}>
+                      <ul style={{ margin: 0, paddingLeft: 16 }}>
+                        {Object.entries(errors).map(([field, message]: any) => (
+                          <li key={field}>
+                            {typeof message === "object" ? (
+                              <ul style={{ margin: 0, paddingLeft: 16 }}>
+                                {Object.entries(message).map(
+                                  ([subField, subMessage]) => (
+                                    <li key={subField}>
+                                      <strong>{subMessage as string}</strong>
+                                    </li>
+                                  )
+                                )}
+                              </ul>
+                            ) : (
+                              <strong>{message as string}</strong>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </Alert>
                   )}
+
                   {/* 👤 Onglet Client */}
                   {tab === 0 && (
                     <Box sx={{ mt: 3 }}>
@@ -411,78 +527,21 @@ const TakeOrderPage: React.FC = () => {
                         helperText={touched.phoneNumber && errors.phoneNumber}
                         sx={{ mb: 2 }}
                       />
-                        <TextField
-                          label="Scheduled for"
-                          name="scheduledFor"
-                          type="datetime-local"
-                          value={values.scheduledFor || ""}
-                          onChange={handleChange}
-                          fullWidth
-                          error={!!(errors.scheduledFor && touched.scheduledFor)}
-                          helperText={touched.scheduledFor && errors.scheduledFor}
-                          sx={{ mt: 2, mb: 2 }}
-                          InputLabelProps={{ shrink: true }}
-                          inputProps={{ min: new Date().toISOString().substring(0, 16) }}
-                        />
-                      {/* <LocalizationProvider dateAdapter={AdapterDateFns}>
-  <DateTimePicker
-    label="Scheduled for"
-    value={values.scheduledFor ? new Date(values.scheduledFor) : null}
-    onChange={newValue => {
-      if (newValue) {
-        const iso = newValue.toISOString().substring(0, 16);
-        setFieldValue('scheduledFor', iso);
-      } else {
-        setFieldValue('scheduledFor', null);
-      }
-    }}
-    disablePast
-    minDateTime={new Date()}
-    shouldDisableDate={date => date < new Date(new Date().setHours(0,0,0,0))}
-    shouldDisableTime={(timeValue, viewType) => {
-      const now = new Date();
-      if (values.scheduledFor) {
-        const pickerDate = new Date(values.scheduledFor);
-        if (isSameDay(pickerDate, now)) {
-          if (viewType === 'hours') {
-            return timeValue.getHours() < now.getHours();
-          }
-          if (viewType === 'minutes') {
-            return (
-              pickerDate.getHours() === now.getHours() &&
-              timeValue.getMinutes() < now.getMinutes()
-            );
-          }
-        }
-      }
-      return false;
-    }}
-    skipDisabled
-    slotProps={{
-      day: {
-        sx: {
-          '&.Mui-disabled': {
-            display: 'none',
-          },
-        },
-      },
-      digitalClockItem: {
-        sx: {
-          '&.Mui-disabled': {
-            display: 'none',
-          },
-        },
-      },
-      textField: {
-        fullWidth: true,
-        error: !!(errors.scheduledFor && touched.scheduledFor),
-        helperText: touched.scheduledFor && errors.scheduledFor,
-        sx: { mt: 2, mb: 2 },
-      },
-    }}
-  />
-</LocalizationProvider> */}
-
+                      <TextField
+                        label="Scheduled for"
+                        name="scheduledFor"
+                        type="datetime-local"
+                        value={values.scheduledFor || ""}
+                        onChange={handleChange}
+                        fullWidth
+                        error={!!(errors.scheduledFor && touched.scheduledFor)}
+                        helperText={touched.scheduledFor && errors.scheduledFor}
+                        sx={{ mt: 2, mb: 2 }}
+                        InputLabelProps={{ shrink: true }}
+                        inputProps={{
+                          min: new Date().toISOString().substring(0, 16),
+                        }}
+                      />
 
                       <FormLabel>Order Type</FormLabel>
                       <RadioGroup
@@ -503,24 +562,6 @@ const TakeOrderPage: React.FC = () => {
                         />
                       </RadioGroup>
 
-                      {/* sans auto completion */}
-                      {/* {values.orderType === OrderType.DELIVERY && (
-                      <Box sx={{ mt: 2 }}>
-                        {Object.keys(values.deliveryAddress).map((key) => (
-                          <TextField
-                            key={key}
-                            label={key}
-                            name={`deliveryAddress.${key}`}
-                            value={(values.deliveryAddress as any)[key]}
-                            onChange={handleChange}
-                            fullWidth
-                            error={!!(errors.deliveryAddress as any)?.[key]}
-                            helperText={(errors.deliveryAddress as any)?.[key]}
-                            sx={{ mb: 2 }}
-                          />
-                        ))}
-                      </Box>
-                    )} */}
                       {values.orderType === OrderType.DELIVERY && (
                         <Box sx={{ mt: 2 }}>
                           <Grid container spacing={2}>
@@ -538,14 +579,16 @@ const TakeOrderPage: React.FC = () => {
                                   setFieldValue("deliveryAddress", {
                                     ...values.deliveryAddress,
                                     street: address,
-                                    city: city,
-                                    postalCode: postalCode,
-                                    country: country,
-                                    lat: lat,
-                                    lng: lng,
+                                    city,
+                                    postalCode,
+                                    country,
+                                    lat,
+                                    lng,
                                   });
                                 }}
-                                error={!!(errors.deliveryAddress as any)?.street}
+                                error={
+                                  !!(errors.deliveryAddress as any)?.street
+                                }
                                 helperText={
                                   (errors.deliveryAddress as any)?.street
                                 }
@@ -556,11 +599,14 @@ const TakeOrderPage: React.FC = () => {
                                 label="Number"
                                 name="deliveryAddress.streetNumber"
                                 type="number"
-                                value={values.deliveryAddress.streetNumber || ""}
+                                value={
+                                  values.deliveryAddress.streetNumber || ""
+                                }
                                 onChange={handleChange}
                                 fullWidth
                                 error={
-                                  !!(errors.deliveryAddress as any)?.streetNumber
+                                  !!(errors.deliveryAddress as any)
+                                    ?.streetNumber
                                 }
                                 helperText={
                                   (errors.deliveryAddress as any)?.streetNumber
@@ -575,7 +621,9 @@ const TakeOrderPage: React.FC = () => {
                                 onChange={handleChange}
                                 fullWidth
                                 error={!!(errors.deliveryAddress as any)?.city}
-                                helperText={(errors.deliveryAddress as any)?.city}
+                                helperText={
+                                  (errors.deliveryAddress as any)?.city
+                                }
                               />
                             </Grid>
                             <Grid item xs={12} sm={6}>
@@ -602,7 +650,7 @@ const TakeOrderPage: React.FC = () => {
                   {/* 🛒 Onglet Produits */}
                   {tab === 1 && (
                     <Box sx={{ mt: 3, display: "flex", gap: 3 }}>
-                      {/* 🎯 Produits */}
+                      {/* Liste des produits à ajouter */}
                       <Box sx={{ flex: 2 }}>
                         <Grid container spacing={2}>
                           <Grid item xs={6}>
@@ -634,7 +682,7 @@ const TakeOrderPage: React.FC = () => {
                           </Grid>
                         </Grid>
 
-                        {isLoading ? (
+                        {isLoadingProducts ? (
                           <Box textAlign="center" mt={4}>
                             <CircularProgress />
                           </Box>
@@ -643,10 +691,10 @@ const TakeOrderPage: React.FC = () => {
                             {paginatedProducts.map((product) => {
                               const selectedSize =
                                 selectedSizes[product._id] ||
-                                product.sizes?.[0]?.name ||
-                                "";
+                                (product.sizes?.[0]?.name ?? "");
                               const price =
-                                product.productType === ProductType.MULTIPLE_SIZES
+                                product.productType ===
+                                ProductType.MULTIPLE_SIZES
                                   ? product.sizes?.find(
                                       (s) => s.name === selectedSize
                                     )?.price ?? 0
@@ -708,7 +756,12 @@ const TakeOrderPage: React.FC = () => {
                                       sx={{ mt: 2 }}
                                       variant="contained"
                                       onClick={() => {
-                                        const newItem: OrderItem = {
+                                        // À chaque ajout, on initialise removedBaseIds et extraIngredientIds à vide
+                                        const newItem: OrderItem & {
+                                          baseIngredients: Ingredient[];
+                                          removedBaseIds: string[];
+                                          extraIngredientIds: string[];
+                                        } = {
                                           productId: product._id,
                                           name:
                                             product.productType ===
@@ -728,23 +781,32 @@ const TakeOrderPage: React.FC = () => {
                                             idx: product.category.idx,
                                           },
                                           image_url: product.image_url,
+                                          // on initialise la liste des bases tirée du produit
+                                          baseIngredients: (
+                                            product.ingredients || []
+                                          ).map((ing) => ({
+                                            _id: ing._id,
+                                            name: ing.name,
+                                            price: ing.price,
+                                            stock: ing.stock ?? 0,
+                                            quantity: 1,
+                                          })),
+                                          removedBaseIds: [],
+                                          extraIngredientIds: [],
                                         };
 
-                                        const existingIndex =
-                                          values.orderItems.findIndex(
-                                            (item) =>
-                                              item.productId ===
-                                                newItem.productId &&
-                                              item.size === newItem.size
-                                          );
-
+                                        const existingIndex = values.orderItems.findIndex((item) => 
+                                          item.productId === newItem.productId &&
+                                          item.size === newItem.size &&
+                                          item.removedBaseIds.length === 0 &&
+                                          item.extraIngredientIds.length === 0
+                                        );
                                         const updated = [...values.orderItems];
                                         if (existingIndex !== -1) {
                                           updated[existingIndex].quantity += 1;
                                         } else {
                                           updated.push(newItem);
                                         }
-
                                         setFieldValue("orderItems", updated);
                                       }}
                                     >
@@ -801,49 +863,215 @@ const TakeOrderPage: React.FC = () => {
                               {({ remove }) => (
                                 <Box>
                                   {values.orderItems.map((item, idx) => (
-                                    <Grid
+                                    <Box
                                       key={idx}
-                                      container
-                                      alignItems="center"
-                                      spacing={1}
-                                      sx={{ mb: 2 }}
+                                      sx={{
+                                        mb: 2,
+                                        p: 2,
+                                        border: "1px solid #ddd",
+                                        borderRadius: 1,
+                                      }}
                                     >
-                                      <Grid item xs={8}>
-                                        <Typography>{item.name}</Typography>
-                                        <Typography variant="caption">
-                                          {item.price} € x {item.quantity}
-                                        </Typography>
-                                      </Grid>
-                                      <Grid item xs={3}>
-                                        <TextField
-                                          type="number"
-                                          size="small"
-                                          value={item.quantity}
-                                          onChange={(e) => {
-                                            const updated = [
-                                              ...values.orderItems,
-                                            ];
-                                            updated[idx].quantity = parseInt(
-                                              e.target.value,
-                                              10
+                                      <Grid
+                                        container
+                                        alignItems="center"
+                                        spacing={1}
+                                      >
+                                        <Grid item xs={8}>
+                                          <Typography>{item.name}</Typography>
+                                          {/* Calculer le coût des extras */}
+                                          {(() => {
+                                            const extrasCost = item.extraIngredientIds.reduce((acc, id) => {
+                                              const ing = allIngredients.find((i) => i._id === id);
+                                              return acc + (ing?.price ?? 0);
+                                            }, 0);
+                                            const unitPrice = item.price + extrasCost;
+                                            return (
+                                              <Typography variant="caption">
+                                                {unitPrice.toFixed(2)} € × {item.quantity}
+                                              </Typography>
                                             );
-                                            setFieldValue("orderItems", updated);
+                                          })()}
+
+                                          {/* Affichage des modifications déjà enregistrées */}
+                                          <Box sx={{ mt: 0.5, pl: 1 }}>
+                                            {item.removedBaseIds.length > 0 && (
+                                              <Typography variant="caption" color="error">
+                                                No{" "}
+                                                {item.baseIngredients
+                                                  .filter((b) => item.removedBaseIds.includes(b._id))
+                                                  .map((b) => {
+                                                    // Supporte Ingredient ou IngredientWithQuantity
+                                                    const name = b.name || (b.ingredient && b.ingredient.name) || b._id;
+                                                    return name;
+                                                  })
+                                                  .join(", ")}
+                                              </Typography>
+                                            )}
+                                            {item.extraIngredientIds.length > 0 && (
+                                              <Typography
+                                                variant="caption"
+                                                sx={{
+                                                  color: "green",
+                                                  display: "block",
+                                                  mt: 0.3,
+                                                }}
+                                              >
+                                                With{" "}
+                                                {(() => {
+                                                  const counts = item.extraIngredientIds.reduce(
+                                                    (acc: Record<string, number>, id) => {
+                                                      acc[id] = (acc[id] || 0) + 1;
+                                                      return acc;
+                                                    },
+                                                    {}
+                                                  );
+                                                  const parts = Object.entries(counts).map(([id, qty]) => {
+                                                    const ing = allIngredients.find((i) => i._id === id);
+                                                    const name = ing ? ing.name : id;
+                                                    if (qty === 1) return `extra ${name}`;
+                                                    if (qty === 2) return `double ${name}`;
+                                                    return `${qty}× ${name}`;
+                                                  });
+                                                  return parts.join(" and ");
+                                                })()}
+                                              </Typography>
+                                            )}
+                                          </Box>
+                                        </Grid>
+                                        <Grid item xs={3}>
+                                          <TextField
+                                            type="number"
+                                            size="small"
+                                            value={item.quantity}
+                                            onChange={(e) => {
+                                              const updated = [
+                                                ...values.orderItems,
+                                              ];
+                                              updated[idx].quantity = parseInt(
+                                                e.target.value,
+                                                10
+                                              );
+                                              setFieldValue(
+                                                "orderItems",
+                                                updated
+                                              );
+                                            }}
+                                          />
+                                        </Grid>
+                                        <Grid item xs={1}>
+                                          <IconButton
+                                            color="error"
+                                            onClick={() => remove(idx)}
+                                          >
+                                            <Remove />
+                                          </IconButton>
+                                        </Grid>
+                                      </Grid>
+
+                                      {/* Bouton « Edit Ingredients » */}
+                                      <Box sx={{ mt: 1 }}>
+                                        <Button
+                                          size="small"
+                                          onClick={() => {
+                                            // Initialise les states du dialog
+                                            setDialogRemovedBaseIds([
+                                              ...item.removedBaseIds,
+                                            ]);
+                                            setDialogExtraIds([
+                                              ...item.extraIngredientIds,
+                                            ]);
+                                            setOpenDialogForIndex(idx);
                                           }}
-                                        />
-                                      </Grid>
-                                      <Grid item xs={1}>
-                                        <IconButton
-                                          color="error"
-                                          onClick={() => remove(idx)}
                                         >
-                                          <Remove />
-                                        </IconButton>
-                                      </Grid>
-                                    </Grid>
+                                          Edit Ingredients
+                                        </Button>
+                                      </Box>
+                                    </Box>
                                   ))}
                                 </Box>
                               )}
                             </FieldArray>
+                          )}
+
+                          {/* IngredientDialog sans modification du composant */}
+                          {openDialogForIndex !== null && (
+                            <IngredientDialog
+                              open={true}
+                              onClose={() => setOpenDialogForIndex(null)}
+                              onBack={() => setOpenDialogForIndex(null)}
+                              allIngredients={allIngredients}
+                              // pour que IngredientDialog considère ces IDs comme "de base"
+                              product={
+                                {
+                                  _id: values.orderItems[openDialogForIndex]
+                                    .productId,
+                                  name: values.orderItems[openDialogForIndex]
+                                    .name,
+                                  ingredients: values.orderItems[
+                                    openDialogForIndex
+                                  ].baseIngredients.map((b: any) => ({
+                                    _id: b._id,
+                                    name: b.name,
+                                    price: b.price,
+                                  })),
+                                } as Product
+                              }
+                              // crossedOut doit être un objet { [id]: true } pour chaque base barrée
+                              crossedOut={dialogRemovedBaseIds.reduce(
+                                (acc, id) => {
+                                  acc[id] = true;
+                                  return acc;
+                                },
+                                {} as Record<string, boolean>
+                              )}
+                              // setCrossedOut doit gérer un updater fonctionnel
+                              setCrossedOut={(newMapOrUpdater) => {
+                                setDialogRemovedBaseIds((prevIds) => {
+                                  // construit l'ancien map à partir de prevIds
+                                  const prevMap = prevIds.reduce((acc, id) => {
+                                    acc[id] = true;
+                                    return acc;
+                                  }, {} as Record<string, boolean>);
+                                  // si newMapOrUpdater est une fonction, on l'appelle
+                                  const newMap =
+                                    typeof newMapOrUpdater === "function"
+                                      ? newMapOrUpdater(prevMap)
+                                      : newMapOrUpdater;
+                                  // on extrait uniquement les clés dont la valeur est true
+                                  return Object.entries(newMap)
+                                    .filter(([, v]) => v)
+                                    .map(([id]) => id);
+                                });
+                              }}
+                              // selectedExtras / setSelectedExtras gère directement la liste des IDs d'extras
+                              selectedExtras={[...dialogExtraIds]}
+                              setSelectedExtras={(ids) =>
+                                setDialogExtraIds([...ids])
+                              }
+                              sizeLabel={
+                                values.orderItems[openDialogForIndex].size
+                              }
+                              priceCalculator={(selected) =>
+                                selected.reduce((sum, id) => {
+                                  const ing = allIngredients.find(
+                                    (i) => i._id === id
+                                  );
+                                  return sum + (ing?.price ?? 0);
+                                }, 0)
+                              }
+                              onSave={() => {
+                                // Au clic sur Save, on réinjecte dans Formik
+                                const updatedItems = [...values.orderItems];
+                                updatedItems[openDialogForIndex] = {
+                                  ...updatedItems[openDialogForIndex],
+                                  removedBaseIds: [...dialogRemovedBaseIds],
+                                  extraIngredientIds: [...dialogExtraIds],
+                                };
+                                setFieldValue("orderItems", updatedItems);
+                                setOpenDialogForIndex(null);
+                              }}
+                            />
                           )}
                         </Paper>
                       </Box>
@@ -854,7 +1082,6 @@ const TakeOrderPage: React.FC = () => {
                   {tab === 2 && (
                     <Paper elevation={2} sx={{ mt: 3, p: 3 }}>
                       <Grid container spacing={4}>
-                        {/* Colonne Paiement */}
                         <Grid item xs={12} md={6}>
                           <Stack spacing={2}>
                             <FormControl component="fieldset">
@@ -903,24 +1130,33 @@ const TakeOrderPage: React.FC = () => {
                           </Stack>
                         </Grid>
 
-                        {/* Colonne Récapitulatif */}
                         <Grid item xs={12} md={6}>
                           <Stack spacing={1}>
                             <Typography variant="subtitle1">
                               Order Summary
                             </Typography>
                             <Divider />
-                            <Stack direction="row" justifyContent="space-between">
+                            <Stack
+                              direction="row"
+                              justifyContent="space-between"
+                            >
                               <Typography>Sub-total</Typography>
                               <Typography>
                                 {values.orderItems
-                                  .reduce(
-                                    (sum, item) =>
-                                      sum + item.price * item.quantity,
-                                    0
-                                  )
-                                  .toFixed(2)}{" "}
-                                €
+                                  .reduce((sum, item) => {
+                                    // calcul du coût des extras pour 1 unité
+                                    const extrasCost = item.extraIngredientIds.reduce((acc, id) => {
+                                      const ing = allIngredients.find((i) => i._id === id);
+                                      return acc + (ing?.price ?? 0);
+                                    }, 0);
+
+                                    // coût unitaire total (base + extras)
+                                    const unitTotal = item.price + extrasCost;
+
+                                    // on ajoute unitTotal × quantité
+                                    return sum + unitTotal * item.quantity;
+                                  }, 0)
+                                  .toFixed(2)} €
                               </Typography>
                             </Stack>
                             {values.orderType === OrderType.DELIVERY && (
@@ -935,7 +1171,10 @@ const TakeOrderPage: React.FC = () => {
                               </Stack>
                             )}
                             <Divider />
-                            <Stack direction="row" justifyContent="space-between">
+                            <Stack
+                              direction="row"
+                              justifyContent="space-between"
+                            >
                               <Typography variant="h6">Total to Pay</Typography>
                               <Typography variant="h6">
                                 {calculateTotal(
@@ -949,7 +1188,6 @@ const TakeOrderPage: React.FC = () => {
                         </Grid>
                       </Grid>
 
-                      {/* Bouton de validation centré */}
                       <Box textAlign="center" mt={4}>
                         <Button
                           type="submit"
