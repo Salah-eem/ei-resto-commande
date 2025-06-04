@@ -50,6 +50,23 @@ import IngredientDialog from "@/components/IngredientDialog";
 import { Ingredient } from "@/types/ingredient";
 import { OrderItem } from "@/types/orderItem";
 import { fetchIngredients } from "@/store/slices/ingredientSlice";
+import { IngredientWithQuantity } from "@/types/cartItem";
+
+type OrderItemForm = {
+  productId: string;
+  name: string;
+  price: number;
+  quantity: number;
+  size?: string;
+  category: Category;
+  image_url?: string;
+
+  // on veut CE QUI VEUT le formulaire
+  baseIngredients: IngredientWithQuantity[]; // <-- quantité + ingrédient
+  removedBaseIds: string[];
+  extraIngredientIds: string[];
+  ingredients: IngredientWithQuantity[];
+};
 
 // 🎯 Type pour les valeurs du formulaire
 type OrderFormValues = {
@@ -57,13 +74,7 @@ type OrderFormValues = {
   phoneNumber: string;
   orderType: OrderType;
   deliveryAddress: Partial<Address>;
-  orderItems: Array<
-    OrderItem & {
-      baseIngredients: Ingredient[];
-      removedBaseIds: string[];
-      extraIngredientIds: string[];
-    }
-  >;
+  orderItems: OrderItemForm[];
   paymentMethod: PaymentMethod;
   paymentStatus: PaymentStatus;
   scheduledFor?: string | null;
@@ -92,13 +103,13 @@ const validationSchema = Yup.object().shape({
         name: Yup.string().required(),
         price: Yup.number().required(),
         quantity: Yup.number().min(1).required(),
-        baseIngredients: Yup.array().of(
+        /*baseIngredients: Yup.array().of(
           Yup.object().shape({
             _id: Yup.string().required(),
             name: Yup.string().required(),
             price: Yup.number().required(),
           })
-        ),
+        ),*/
         removedBaseIds: Yup.array().of(Yup.string()),
         extraIngredientIds: Yup.array().of(Yup.string()),
       })
@@ -228,46 +239,76 @@ const TakeOrderPage: React.FC = () => {
           lat: order.deliveryAddress?.lat,
           lng: order.deliveryAddress?.lng,
         },
-        orderItems: order.items.map((oi) => ({
-          productId: oi.productId,
-          name: oi.name,
-          price: oi.price,
-          quantity: oi.quantity,
-          size: oi.size,
-          category: oi.category,
-          image_url: oi.image_url,
-          // on récupère la liste des ingrédients de base venant du backend
-          baseIngredients: (oi.baseIngredients || []).map((b: any) => ({
-            _id: b._id,
-            ingredient: {
-              _id: b._id,
-              name: b.name,
-              price: b.price,
-              stock: b.stock ?? 0,
-            },
-            quantity: b.quantity ?? 1,
-          })),
-          removedBaseIds: (oi.baseIngredients || [])
-            .filter(base => {
-              const ingQty = (oi.ingredients || []).find(i => i._id === base._id)?.quantity || 0;
-              const baseQty = base.quantity || 1;
+        orderItems: order.items.map((oi) => {
+          // Ici, oi.baseIngredients est déjà de type IngredientWithQuantity[]
+          const baseIng: IngredientWithQuantity[] = Array.isArray(
+            oi.baseIngredients
+          )
+            ? (oi.baseIngredients as any[]).map((b: any) => ({
+                _id: b._id,
+                ingredient: {
+                  _id: b._id,
+                  name: b.name,
+                  price: b.price,
+                  stock: b.stock ?? 0,
+                },
+                quantity: b.quantity ?? 1,
+              }))
+            : [];
+
+          // oi.ingredients est déjà de type IngredientWithQuantity[]
+          const allIng: IngredientWithQuantity[] = Array.isArray(oi.ingredients)
+            ? (oi.ingredients as any[]).map((e: any) => ({
+                _id: e._id,
+                ingredient: {
+                  _id: e._id,
+                  name: e.name,
+                  price: e.price,
+                  stock: e.stock ?? 0,
+                },
+                quantity: e.quantity ?? 1,
+              }))
+            : [];
+
+          // removedBaseIds : ceux dont la qty envoyée < qty de base
+          const removedBaseIds: string[] = baseIng
+            .filter((b) => {
+              const ingInItem = allIng.find((i) => i._id === b._id);
+              const ingQty = ingInItem?.quantity ?? 0;
+              const baseQty = b.quantity;
               return ingQty < baseQty;
             })
-            .map((ing) => ing._id),
-          extraIngredientIds: (() => {
-            const ingredientCounts: Record<string, number> = {};
-            (oi.ingredients || []).forEach((ing) => {
-              ingredientCounts[ing._id] = (ingredientCounts[ing._id] || 0) + (ing.quantity || 1);
-            });
-            (oi.baseIngredients || []).forEach((b) => {
-              ingredientCounts[b._id] = (ingredientCounts[b._id] || 0) - (b.quantity || 1);
-            });
-            return Object.entries(ingredientCounts)
-              .filter(([_, qty]) => qty > 0)
-              .flatMap(([id, qty]) => Array(qty).fill(id));
-          })(),
-          ingredients: oi.ingredients,
-        })),
+            .map((b) => b._id);
+
+          // extraIngredientIds : quantité supplémentaire au-delà de la base
+          const ingredientCounts: Record<string, number> = {};
+          allIng.forEach((i) => {
+            ingredientCounts[i._id] =
+              (ingredientCounts[i._id] || 0) + i.quantity;
+          });
+          baseIng.forEach((b) => {
+            ingredientCounts[b._id] =
+              (ingredientCounts[b._id] || 0) - b.quantity;
+          });
+          const extraIngredientIds: string[] = Object.entries(ingredientCounts)
+            .filter(([_, qty]) => qty > 0)
+            .flatMap(([id, qty]) => Array(qty).fill(id));
+
+          return {
+            productId: oi.productId,
+            name: oi.name,
+            price: oi.price,
+            quantity: oi.quantity,
+            size: oi.size,
+            category: oi.category,
+            image_url: oi.image_url,
+
+            baseIngredients: baseIng, // type IngredientWithQuantity[]
+            removedBaseIds: removedBaseIds, // type string[]
+            extraIngredientIds: extraIngredientIds, // type string[]
+            ingredients: allIng, // type IngredientWithQuantity[]
+          };
+        }),
         paymentMethod: order.paymentMethod,
         paymentStatus: order.paymentStatus,
         scheduledFor: order.scheduledFor
@@ -275,6 +316,7 @@ const TakeOrderPage: React.FC = () => {
           : null,
       };
     }
+
     return initialFormValues;
   };
 
@@ -290,54 +332,48 @@ const TakeOrderPage: React.FC = () => {
   const totalPages = Math.ceil(filteredProducts.length / productsPerPage);
 
   // Calcul du total (incluant hypothétique deliveryFee)
- const calculateTotal = (
-  items: OrderFormValues["orderItems"],
-  orderType: OrderType
-) =>
-  (
-    items.reduce((sum, item) => {
-      // 1) on calcule le coût des extras pour 1 unité
-      const extrasCost = item.extraIngredientIds.reduce((acc, id) => {
-        const ing = allIngredients.find((i) => i._id === id);
-        return acc + (ing?.price ?? 0);
-      }, 0);
+  const calculateTotal = (
+    items: OrderFormValues["orderItems"],
+    orderType: OrderType
+  ) =>
+    (
+      items.reduce((sum, item) => {
+        // 1) on calcule le coût des extras pour 1 unité
+        const extrasCost = item.extraIngredientIds.reduce((acc, id) => {
+          const ing = allIngredients.find((i) => i._id === id);
+          return acc + (ing?.price ?? 0);
+        }, 0);
 
-      // 2) on calcule le coût unitaire (prix de base + extras)
-      const unitTotal = item.price + extrasCost;
+        // 2) on calcule le coût unitaire (prix de base + extras)
+        const unitTotal = item.price + extrasCost;
 
-      // 3) on multiplie par la quantité
-      return sum + unitTotal * item.quantity;
-    }, 0) + (orderType === OrderType.DELIVERY ? deliveryFee ?? 0 : 0)
-  ).toFixed(2);
-
+        // 3) on multiplie par la quantité
+        return sum + unitTotal * item.quantity;
+      }, 0) + (orderType === OrderType.DELIVERY ? deliveryFee ?? 0 : 0)
+    ).toFixed(2);
 
   // Soumission du formulaire
   const handleSubmit = async (values: OrderFormValues, { resetForm }: any) => {
     setIsSubmitting(true);
     try {
-      // Prépare le payload en transformant nos champs en ce que le backend attend
       const payload: Partial<Order> = {
         customer: {
           name: values.customerName,
           phone: values.phoneNumber,
         },
         items: values.orderItems.map((item) => {
-          // 1) Construire un map { [ingId]: quantité_totale }
+          // 1) Map { [ingId]: qtyTotal }
           const ingredientCountMap: Record<string, number> = {};
-
-          // – On ajoute chaque base non retirée
           item.baseIngredients
             .filter((b) => !item.removedBaseIds.includes(b._id))
             .forEach((b) => {
               ingredientCountMap[b._id] = (ingredientCountMap[b._id] || 0) + 1;
             });
-
-          // – On ajoute chaque extra sélectionné
           item.extraIngredientIds.forEach((id) => {
             ingredientCountMap[id] = (ingredientCountMap[id] || 0) + 1;
           });
 
-          // 2) Transformer le map en tableau [{ _id, quantity }, …]
+          // 2) Transformer en [{ _id, quantity }]
           const mergedIngredients = Object.entries(ingredientCountMap).map(
             ([id, qty]) => ({
               _id: id,
@@ -345,17 +381,34 @@ const TakeOrderPage: React.FC = () => {
             })
           );
 
-          // 3) Envoyer ce tableau dans le champ que le backend attend
+          // 3) Construire IngredientWithQuantity[] en joignant `ingredient` depuis allIngredients
+          const mergedIngredientsWithDetails: IngredientWithQuantity[] =
+            mergedIngredients.map(({ _id, quantity }) => {
+              const found = allIngredients.find((i) => i._id === _id);
+              return {
+                _id,
+                ingredient: found
+                  ? {
+                      _id: found._id,
+                      name: found.name,
+                      price: found.price,
+                      stock: found.stock,
+                    }
+                  : { _id, name: "", price: 0, stock: 0 },
+                quantity,
+              };
+            });
+
           return {
             productId: item.productId,
             name: item.name,
-            price: item.price,      
+            price: item.price,
             quantity: item.quantity,
             size: item.size,
             category: item.category,
             image_url: item.image_url,
             baseIngredients: item.baseIngredients,
-            ingredients: mergedIngredients,
+            ingredients: mergedIngredientsWithDetails,
           };
         }),
         totalAmount: parseFloat(
@@ -756,11 +809,19 @@ const TakeOrderPage: React.FC = () => {
                                       sx={{ mt: 2 }}
                                       variant="contained"
                                       onClick={() => {
-                                        // À chaque ajout, on initialise removedBaseIds et extraIngredientIds à vide
-                                        const newItem: OrderItem & {
-                                          baseIngredients: Ingredient[];
+                                        // Ici, on crée un "OrderItemForm" plutôt que "OrderItem & { baseIngredients: Ingredient[] }"
+                                        const newItem: {
+                                          productId: string;
+                                          name: string;
+                                          price: number;
+                                          quantity: number;
+                                          size?: string;
+                                          category: Category;
+                                          image_url?: string;
+                                          baseIngredients: IngredientWithQuantity[];
                                           removedBaseIds: string[];
                                           extraIngredientIds: string[];
+                                          ingredients: IngredientWithQuantity[];
                                         } = {
                                           productId: product._id,
                                           name:
@@ -781,26 +842,40 @@ const TakeOrderPage: React.FC = () => {
                                             idx: product.category.idx,
                                           },
                                           image_url: product.image_url,
-                                          // on initialise la liste des bases tirée du produit
+
+                                          // → On transforme product.ingredients (Ingredient[]) en IngredientWithQuantity[]
                                           baseIngredients: (
                                             product.ingredients || []
                                           ).map((ing) => ({
                                             _id: ing._id,
-                                            name: ing.name,
-                                            price: ing.price,
-                                            stock: ing.stock ?? 0,
-                                            quantity: 1,
+                                            ingredient: {
+                                              _id: ing._id,
+                                              name: ing.name,
+                                              price: ing.price,
+                                              stock: ing.stock ?? 0,
+                                            },
+                                            quantity: 1, // quantité par défaut = 1
                                           })),
+
                                           removedBaseIds: [],
                                           extraIngredientIds: [],
+
+                                          // Pour la clé "ingredients", on met simplement un tableau vide au départ
+                                          ingredients: [],
                                         };
 
-                                        const existingIndex = values.orderItems.findIndex((item) => 
-                                          item.productId === newItem.productId &&
-                                          item.size === newItem.size &&
-                                          item.removedBaseIds.length === 0 &&
-                                          item.extraIngredientIds.length === 0
-                                        );
+                                        // Si le produit existe déjà sans modifications d'ingrédients, on incrémente la quantité
+                                        const existingIndex =
+                                          values.orderItems.findIndex(
+                                            (item) =>
+                                              item.productId ===
+                                                newItem.productId &&
+                                              item.size === newItem.size &&
+                                              item.removedBaseIds.length ===
+                                                0 &&
+                                              item.extraIngredientIds.length ===
+                                                0
+                                          );
                                         const updated = [...values.orderItems];
                                         if (existingIndex !== -1) {
                                           updated[existingIndex].quantity += 1;
@@ -810,7 +885,7 @@ const TakeOrderPage: React.FC = () => {
                                         setFieldValue("orderItems", updated);
                                       }}
                                     >
-                                      Add - {price} €
+                                      Add – {price} €
                                     </Button>
                                   </Paper>
                                 </Grid>
@@ -881,14 +956,25 @@ const TakeOrderPage: React.FC = () => {
                                           <Typography>{item.name}</Typography>
                                           {/* Calculer le coût des extras */}
                                           {(() => {
-                                            const extrasCost = item.extraIngredientIds.reduce((acc, id) => {
-                                              const ing = allIngredients.find((i) => i._id === id);
-                                              return acc + (ing?.price ?? 0);
-                                            }, 0);
-                                            const unitPrice = item.price + extrasCost;
+                                            const extrasCost =
+                                              item.extraIngredientIds.reduce(
+                                                (acc, id) => {
+                                                  const ing =
+                                                    allIngredients.find(
+                                                      (i) => i._id === id
+                                                    );
+                                                  return (
+                                                    acc + (ing?.price ?? 0)
+                                                  );
+                                                },
+                                                0
+                                              );
+                                            const unitPrice =
+                                              item.price + extrasCost;
                                             return (
                                               <Typography variant="caption">
-                                                {unitPrice.toFixed(2)} € × {item.quantity}
+                                                {unitPrice.toFixed(2)} € ×{" "}
+                                                {item.quantity}
                                               </Typography>
                                             );
                                           })()}
@@ -896,19 +982,31 @@ const TakeOrderPage: React.FC = () => {
                                           {/* Affichage des modifications déjà enregistrées */}
                                           <Box sx={{ mt: 0.5, pl: 1 }}>
                                             {item.removedBaseIds.length > 0 && (
-                                              <Typography variant="caption" color="error">
+                                              <Typography
+                                                variant="caption"
+                                                color="error"
+                                              >
                                                 No{" "}
                                                 {item.baseIngredients
-                                                  .filter((b) => item.removedBaseIds.includes(b._id))
-                                                  .map((b) => {
+                                                  .filter((b) =>
+                                                    item.removedBaseIds.includes(
+                                                      b._id
+                                                    )
+                                                  )
+                                                  .map((b: any) => {
                                                     // Supporte Ingredient ou IngredientWithQuantity
-                                                    const name = b.name || (b.ingredient && b.ingredient.name) || b._id;
+                                                    const name =
+                                                      b.name ||
+                                                      (b.ingredient &&
+                                                        b.ingredient.name) ||
+                                                      b._id;
                                                     return name;
                                                   })
                                                   .join(", ")}
                                               </Typography>
                                             )}
-                                            {item.extraIngredientIds.length > 0 && (
+                                            {item.extraIngredientIds.length >
+                                              0 && (
                                               <Typography
                                                 variant="caption"
                                                 sx={{
@@ -919,18 +1017,35 @@ const TakeOrderPage: React.FC = () => {
                                               >
                                                 With{" "}
                                                 {(() => {
-                                                  const counts = item.extraIngredientIds.reduce(
-                                                    (acc: Record<string, number>, id) => {
-                                                      acc[id] = (acc[id] || 0) + 1;
-                                                      return acc;
-                                                    },
-                                                    {}
-                                                  );
-                                                  const parts = Object.entries(counts).map(([id, qty]) => {
-                                                    const ing = allIngredients.find((i) => i._id === id);
-                                                    const name = ing ? ing.name : id;
-                                                    if (qty === 1) return `extra ${name}`;
-                                                    if (qty === 2) return `double ${name}`;
+                                                  const counts =
+                                                    item.extraIngredientIds.reduce(
+                                                      (
+                                                        acc: Record<
+                                                          string,
+                                                          number
+                                                        >,
+                                                        id
+                                                      ) => {
+                                                        acc[id] =
+                                                          (acc[id] || 0) + 1;
+                                                        return acc;
+                                                      },
+                                                      {}
+                                                    );
+                                                  const parts = Object.entries(
+                                                    counts
+                                                  ).map(([id, qty]) => {
+                                                    const ing =
+                                                      allIngredients.find(
+                                                        (i) => i._id === id
+                                                      );
+                                                    const name = ing
+                                                      ? ing.name
+                                                      : id;
+                                                    if (qty === 1)
+                                                      return `extra ${name}`;
+                                                    if (qty === 2)
+                                                      return `double ${name}`;
                                                     return `${qty}× ${name}`;
                                                   });
                                                   return parts.join(" and ");
@@ -1145,10 +1260,16 @@ const TakeOrderPage: React.FC = () => {
                                 {values.orderItems
                                   .reduce((sum, item) => {
                                     // calcul du coût des extras pour 1 unité
-                                    const extrasCost = item.extraIngredientIds.reduce((acc, id) => {
-                                      const ing = allIngredients.find((i) => i._id === id);
-                                      return acc + (ing?.price ?? 0);
-                                    }, 0);
+                                    const extrasCost =
+                                      item.extraIngredientIds.reduce(
+                                        (acc, id) => {
+                                          const ing = allIngredients.find(
+                                            (i) => i._id === id
+                                          );
+                                          return acc + (ing?.price ?? 0);
+                                        },
+                                        0
+                                      );
 
                                     // coût unitaire total (base + extras)
                                     const unitTotal = item.price + extrasCost;
@@ -1156,7 +1277,8 @@ const TakeOrderPage: React.FC = () => {
                                     // on ajoute unitTotal × quantité
                                     return sum + unitTotal * item.quantity;
                                   }, 0)
-                                  .toFixed(2)} €
+                                  .toFixed(2)}{" "}
+                                €
                               </Typography>
                             </Stack>
                             {values.orderType === OrderType.DELIVERY && (
