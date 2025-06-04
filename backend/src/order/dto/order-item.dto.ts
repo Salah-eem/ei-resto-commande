@@ -1,5 +1,6 @@
 import { IsString, IsNumber, IsOptional } from 'class-validator';
 import { Category } from 'src/schemas/category.schema';
+import { IngredientWithQuantity } from 'src/schemas/ingredient-with-quantity.schema';
 
 export class OrderItemDto {
   @IsString()
@@ -26,4 +27,10 @@ export class OrderItemDto {
 
   @IsOptional()
   liked?: boolean;
+
+  @IsOptional()
+  baseIngredients?: IngredientWithQuantity[];
+
+  @IsOptional()
+  ingredients?: IngredientWithQuantity[];
 }

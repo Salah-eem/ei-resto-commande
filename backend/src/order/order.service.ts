@@ -251,7 +251,7 @@ export class OrderService implements OnModuleInit {
       }
     }
 
-    // Build array of OrderItem inputs
+    // 1) On prépare le tableau itemsSource (avec _mapItem), inchangé
     const itemsSource: any[] = isEmployee
       ? (dto.items as any[]).map((i) => this._mapItem(i))
       : (await this._getCartItems(dto.userId)).map((i) => this._mapItem(i));
@@ -264,14 +264,16 @@ export class OrderService implements OnModuleInit {
         ? this.restaurantService.getRestaurant()!.deliveryFee
         : 0;
 
-    // Create Order shell
+    // 2) Création de l’Order “vide” (shell)
     const order = await new this.orderModel({
       source,
       userId: dto.userId ?? undefined,
       customer: dto.customer,
       items: [],
       totalAmount: 0,
-      orderStatus: dto.scheduledFor ? OrderStatus.SCHEDULED : OrderStatus.IN_PREPARATION,
+      orderStatus: dto.scheduledFor
+        ? OrderStatus.SCHEDULED
+        : OrderStatus.IN_PREPARATION,
       paymentMethod: dto.paymentMethod,
       paymentStatus: dto.paymentStatus,
       orderType: dto.orderType,
@@ -280,45 +282,90 @@ export class OrderService implements OnModuleInit {
       scheduledFor: dto.scheduledFor,
     }).save();
 
-    // Insert OrderItems in bulk
+    // 3) Insertion en masse des OrderItems
     const inserted = await this.orderItemModel.insertMany(
       itemsSource.map((i) => ({
         ...i,
         orderId: this.toObjectId(order._id as string),
         preparedQuantity: 0,
         isPrepared: false,
-      })),
+      }))
     );
     const itemIds = inserted.map((it) => it._id);
-    const totalAmount =
-      inserted.reduce((s, it) => s + it.price * it.quantity, 0) + fee;
 
-    // Deduct stock for each item
-    await Promise.all(
-      inserted.map(async (it) => {
-        if (!it.productId) return;
-        const prod = await this.orderItemModel.db
-          .collection('products')
-          .findOne({ _id: it.productId });
-        if (prod?.stock != null) {
-          await this.orderItemModel.db
-            .collection('products')
-            .updateOne(
-              { _id: it.productId },
-              { $inc: { stock: -it.quantity } },
-            );
+    // 4) Calcul de totalAmount en tenant compte **seulement** des extras au-delà
+    //    des bases dont la quantity est = 1.
+    let totalAmount = 0;
+
+    for (const it of inserted) {
+      // Prix de base du produit pour une unité
+      const basePrice = it.price;
+
+      // 4.a) On crée un map pour les ing de base : { idDeBase: quantitéDeBase }
+      //     Exemple : si baseIngredients = [ { _id: "A", quantity: 1 }, { _id: "B", quantity: 2 } ]
+      //     alors baseMap = { "A": 1, "B": 2 }
+      const baseMap: Record<string, number> = {};
+      (it.baseIngredients as { _id: string; quantity: number }[]).forEach(
+        (b) => {
+          baseMap[b._id] = b.quantity;
         }
-      }),
-    );
+      );
 
+      // 4.b) Maintenant, on calcule le coût des EXTRAS au-delà :
+      //     it.ingredients contient **tous** les ing (bases potentiellement avec qty>1, + extras pures)
+      let extrasCostUnitaire = 0;
+      for (const ingRef of it.ingredients as { _id: string; quantity: number }[]) {
+        // On récupère le document complet de l’ingrédient pour connaître son “price”
+        const ingDoc = await this.orderItemModel.db
+          .collection('ingredients')
+          .findOne({ _id: this.toObjectId(ingRef._id) });
+        if (!ingDoc || typeof ingDoc.price !== 'number') {
+          continue; // passe si on n’a pas trouvé le prix
+        }
+
+        const prixIng = ingDoc.price;
+        const qtyTotal = ingRef.quantity; // quantité demandée pour cet ingrédient
+
+        if (baseMap[ingRef._id] != null) {
+          // Cet ingrédient faisait partie des bases
+          const qtyBase = baseMap[ingRef._id];
+          // Si qtyBase === 1, on ne facture pas la 1ère unité de base → on ne garde que (qtyTotal - 1)
+          // Si qtyBase > 1, on ne facture que le surplus (= qtyTotal - qtyBase)
+          // MAIS si qtyTotal <= qtyBase, on ne facture rien
+          const surplus = qtyTotal - qtyBase;
+          if (surplus > 0) {
+            extrasCostUnitaire += prixIng * surplus;
+          }
+        } else {
+          // Cet ingrédient n’est pas dans les bases → c’est un “extra pur”
+          // On facture la totalité de qtyTotal
+          extrasCostUnitaire += prixIng * qtyTotal;
+        }
+      }
+
+      // 4.c) Coût total pour cet OrderItem = (prix de base + extrasCostUnitaire) × quantité
+      const costParItem = (basePrice + extrasCostUnitaire) * it.quantity;
+      totalAmount += costParItem;
+    }
+
+    // 5) Ajout du deliveryFee si besoin
+    totalAmount += fee;
+
+    // 6) Mise à jour de l’Order avec items + totalAmount
     const updatedOrder = await this.orderModel
-      .findByIdAndUpdate(order._id, { items: itemIds, totalAmount }, { new: true })
+      .findByIdAndUpdate(
+        order._id,
+        { items: itemIds, totalAmount },
+        { new: true }
+      )
       .orFail(() => new NotFoundException('Order not found after create'));
 
+    // 7) Si c’est un client (non employé), on vide le panier
     if (!isEmployee) {
       await this.cartModel.updateOne({ userId: dto.userId }, { items: [] });
     }
 
+    // 8) Notification des “live orders”
     this.liveOrdersGateway.sendUpdate();
     return updatedOrder;
   }
