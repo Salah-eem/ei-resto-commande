@@ -17,6 +17,8 @@ export class CartService {
     // On cherche (et on peuple) le panier existant
     let cartDoc = await this.cartModel
       .findOne({ userId })
+      // .populate('items.productId') // on peuple chaque produit
+      .populate('items.category') // on peuple chaque catégorie
       .populate('items.baseIngredients._id') // on peuple chaque baseIngredient
       .populate('items.ingredients._id') // on peuple chaque ingredient
       .exec();
@@ -290,5 +292,17 @@ export class CartService {
     }
     // Si aucun panier invité n'existe, on retourne simplement le panier utilisateur (ou un panier vide)
     return this.getOrCreateCart(userId);
+  }
+
+  // ✅ Vider le panier
+  async clearCart(userId: string): Promise<any> {
+    const cartDoc = await this.cartModel.findOne({ userId });
+    if (!cartDoc) {
+      throw new NotFoundException('Panier non trouvé.');
+    }
+
+    cartDoc.items = [];
+    await cartDoc.save();
+    return this.getOrCreateCart(userId); // Pour retourner un panier vide
   }
 }

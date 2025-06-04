@@ -54,4 +54,12 @@ export class CartController {
   ) {
     return this.cartService.removeItemFromCart(userId, itemId);
   }
+
+  // ✅ Vider le panier
+  @Public()
+  @Delete(':userId/clear')
+  async clearCart(@Param('userId') userId: string) {
+    return this.cartService.clearCart(userId);
+  }
+
 }

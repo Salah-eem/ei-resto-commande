@@ -62,16 +62,6 @@ export class OrderService implements OnModuleInit {
           select: 'name',
         },
       },
-      {
-        path: 'baseIngredients._id',
-        model: 'Ingredient',
-        select: 'name price',
-      },
-      {
-        path: 'ingredients._id',
-        model: 'Ingredient',
-        select: 'name price',
-      },
     ];
   }
 
@@ -105,35 +95,59 @@ export class OrderService implements OnModuleInit {
   // Map a single OrderItem document → JSON
   // --------------------------------------
   private mapOrderItem(oi: any): any {
-    const prod = oi.productId as any;
-    let computedPrice = oi.price;
-    if (prod.productType === 'multiple_sizes' && Array.isArray(prod.sizes)) {
-      const sizeMatch = prod.sizes.find((s: any) => s.name === oi.size);
-      if (sizeMatch) computedPrice = sizeMatch.price;
-    } else if (prod.productType === 'single_price' && prod.basePrice != null) {
-      computedPrice = prod.basePrice;
-    }
+    // 1) ProductId en string
+    const prodId =
+      oi.productId && (oi.productId as any)._id
+        ? (oi.productId as any)._id.toString()
+        : (oi.productId as Types.ObjectId).toString();
 
-    const baseIngredients = Array.isArray(oi.baseIngredients)
-      ? oi.baseIngredients.map((b: any) => this.mapIngredient(b))
+    // 2) Copie des données du produit
+    const name = oi.name;
+    const price = oi.price;
+    const quantity = oi.quantity;
+    const size = oi.size;
+    const image_url = oi.image_url;
+    const category = oi.category; // { _id, name, idx }
+    const preparedQuantity = oi.preparedQuantity ?? 0;
+    const isPrepared = oi.isPrepared ?? false;
+
+    // 3) baseIngredientsSnapshot → formaté en baseIngredients
+    const baseIngredients = Array.isArray(oi.baseIngredientsSnapshot)
+      ? (oi.baseIngredientsSnapshot as any[]).map((snap) => ({
+          _id: (snap._id as Types.ObjectId).toString(),
+          name: snap.name,
+          price: snap.unitPrice,
+          quantity: snap.quantity,
+        }))
       : [];
-    const extras = Array.isArray(oi.ingredients)
-      ? oi.ingredients.map((e: any) => this.mapIngredient(e))
+
+    // 4) extraIngredientsSnapshot → renvoyé directement sous “ingredients”
+    const extraIngredients = Array.isArray(oi.extraIngredientsSnapshot)
+      ? (oi.extraIngredientsSnapshot as any[]).map((snap) => ({
+          _id: (snap._id as Types.ObjectId).toString(),
+          name: snap.name,
+          price: snap.unitPrice,
+          quantity: snap.quantity,
+        }))
       : [];
 
     return {
-      _id: oi._id,
-      productId: prod._id,
-      name: prod.name,
-      price: computedPrice,
-      quantity: oi.quantity,
-      size: oi.size,
-      image_url: prod.image_url,
-      category: prod.category,
-      preparedQuantity: oi.preparedQuantity ?? 0,
-      isPrepared: oi.isPrepared ?? false,
+      _id: oi._id.toString(),
+      productId: prodId,
+      name,
+      price,
+      quantity,
+      size,
+      image_url,
+      category,
+      preparedQuantity,
+      isPrepared,
+
+      // Clé facultative : si vous voulez exposer séparément la base
       baseIngredients,
-      ingredients: extras,
+
+      // Clé “ingredients” = tout ce qui était envoyé par le frontend
+      ingredients: extraIngredients,
     };
   }
 
@@ -150,7 +164,10 @@ export class OrderService implements OnModuleInit {
       .filter((oi) => !!oi.productId)
       .map((oi) => this.mapOrderItem(oi));
 
-    const totalAmount = items.reduce((sum, it) => sum + it.price * it.quantity, 0);
+    const totalAmount = items.reduce(
+      (sum, it) => sum + it.price * it.quantity,
+      0,
+    );
 
     return {
       _id: order._id,
@@ -177,7 +194,9 @@ export class OrderService implements OnModuleInit {
   async findDeliveryOrders(): Promise<any[]> {
     const raw = await this.orderModel
       .find({
-        orderStatus: { $in: [OrderStatus.READY_FOR_DELIVERY, OrderStatus.OUT_FOR_DELIVERY] },
+        orderStatus: {
+          $in: [OrderStatus.READY_FOR_DELIVERY, OrderStatus.OUT_FOR_DELIVERY],
+        },
         orderType: OrderType.DELIVERY,
       })
       .sort('-createdAt')
@@ -252,9 +271,16 @@ export class OrderService implements OnModuleInit {
     }
 
     // 1) On prépare le tableau itemsSource (avec _mapItem), inchangé
-    const itemsSource: any[] = isEmployee
-      ? (dto.items as any[]).map((i) => this._mapItem(i))
-      : (await this._getCartItems(dto.userId)).map((i) => this._mapItem(i));
+    let itemsSource: any[];
+    if (isEmployee) {
+      itemsSource = await Promise.all(
+        (dto.items as any[]).map((i) => this._mapItem(i))
+      );
+    } else {
+      const cartItems = await this._getCartItems(dto.userId);
+      itemsSource = await Promise.all(cartItems.map((i) => this._mapItem(i)));
+    }
+    console.log('itemsSource', itemsSource);
 
     await this.checkItemsAvailability(itemsSource);
 
@@ -289,77 +315,56 @@ export class OrderService implements OnModuleInit {
         orderId: this.toObjectId(order._id as string),
         preparedQuantity: 0,
         isPrepared: false,
-      }))
+      })),
     );
     const itemIds = inserted.map((it) => it._id);
 
-    // 4) Calcul de totalAmount en tenant compte **seulement** des extras au-delà
-    //    des bases dont la quantity est = 1.
+    // Recalculer totalAmount en tenant compte uniquement du surplus d’extras
     let totalAmount = 0;
 
     for (const it of inserted) {
-      // Prix de base du produit pour une unité
-      const basePrice = it.price;
+      // 1) Prix de base du produit pour 1 unité
+      const basePrice = (it as any).price;
 
-      // 4.a) On crée un map pour les ing de base : { idDeBase: quantitéDeBase }
-      //     Exemple : si baseIngredients = [ { _id: "A", quantity: 1 }, { _id: "B", quantity: 2 } ]
-      //     alors baseMap = { "A": 1, "B": 2 }
+      // 2) Somme des coûts d’extras :
+      //    Pour chaque ingrédient dans extraIngredientsSnapshot, on déduit la quantité de base s’il y en a
       const baseMap: Record<string, number> = {};
-      (it.baseIngredients as { _id: string; quantity: number }[]).forEach(
-        (b) => {
-          baseMap[b._id] = b.quantity;
-        }
-      );
-
-      // 4.b) Maintenant, on calcule le coût des EXTRAS au-delà :
-      //     it.ingredients contient **tous** les ing (bases potentiellement avec qty>1, + extras pures)
-      let extrasCostUnitaire = 0;
-      for (const ingRef of it.ingredients as { _id: string; quantity: number }[]) {
-        // On récupère le document complet de l’ingrédient pour connaître son “price”
-        const ingDoc = await this.orderItemModel.db
-          .collection('ingredients')
-          .findOne({ _id: this.toObjectId(ingRef._id) });
-        if (!ingDoc || typeof ingDoc.price !== 'number') {
-          continue; // passe si on n’a pas trouvé le prix
-        }
-
-        const prixIng = ingDoc.price;
-        const qtyTotal = ingRef.quantity; // quantité demandée pour cet ingrédient
-
-        if (baseMap[ingRef._id] != null) {
-          // Cet ingrédient faisait partie des bases
-          const qtyBase = baseMap[ingRef._id];
-          // Si qtyBase === 1, on ne facture pas la 1ère unité de base → on ne garde que (qtyTotal - 1)
-          // Si qtyBase > 1, on ne facture que le surplus (= qtyTotal - qtyBase)
-          // MAIS si qtyTotal <= qtyBase, on ne facture rien
-          const surplus = qtyTotal - qtyBase;
-          if (surplus > 0) {
-            extrasCostUnitaire += prixIng * surplus;
-          }
-        } else {
-          // Cet ingrédient n’est pas dans les bases → c’est un “extra pur”
-          // On facture la totalité de qtyTotal
-          extrasCostUnitaire += prixIng * qtyTotal;
+      if (Array.isArray((it as any).baseIngredientsSnapshot)) {
+        for (const b of (it as any).baseIngredientsSnapshot as any[]) {
+          baseMap[(b._id as Types.ObjectId).toString()] = b.quantity;
         }
       }
 
-      // 4.c) Coût total pour cet OrderItem = (prix de base + extrasCostUnitaire) × quantité
-      const costParItem = (basePrice + extrasCostUnitaire) * it.quantity;
-      totalAmount += costParItem;
+      // 2.a) Parcourir extraIngredientsSnapshot et ne facturer que (qtyExtra – qtyBase)
+      let extrasCostUnitaire = 0;
+      if (Array.isArray((it as any).extraIngredientsSnapshot)) {
+        for (const e of (it as any).extraIngredientsSnapshot as any[]) {
+          const idStr = (e._id as Types.ObjectId).toString();
+          const qtyExtra = e.quantity;
+          const qtyBase = baseMap[idStr] ?? 0;
+          const surplus = qtyExtra - qtyBase;
+          if (surplus > 0) {
+            // unitPrice est déjà stocké dans extraIngredientsSnapshot → e.unitPrice
+            extrasCostUnitaire += e.unitPrice * surplus;
+          }
+        }
+      }
+
+      // 3) Coût total pour cet OrderItem = (prix de base + extrasCostUnitaire) × quantity du produit
+      totalAmount += (basePrice + extrasCostUnitaire) * it.quantity;
     }
 
-    // 5) Ajout du deliveryFee si besoin
+    // 4) Si c’est une livraison, ajouter le deliveryFee
     totalAmount += fee;
 
-    // 6) Mise à jour de l’Order avec items + totalAmount
+    // 5) Mise à jour de la commande avec le total corrigé
     const updatedOrder = await this.orderModel
       .findByIdAndUpdate(
         order._id,
         { items: itemIds, totalAmount },
-        { new: true }
+        { new: true },
       )
       .orFail(() => new NotFoundException('Order not found after create'));
-
     // 7) Si c’est un client (non employé), on vide le panier
     if (!isEmployee) {
       await this.cartModel.updateOne({ userId: dto.userId }, { items: [] });
@@ -475,10 +480,10 @@ export class OrderService implements OnModuleInit {
     this.liveOrdersGateway.sendUpdate();
 
     return this.orderModel
-    .findById(id)
-    .populate('items')
-    .orFail(() => new NotFoundException('Order not found after update'))
-    .exec();
+      .findById(id)
+      .populate('items')
+      .orFail(() => new NotFoundException('Order not found after update'))
+      .exec();
   }
 
   private async handleRescheduleLogic(orderId: string, newDate: Date) {
@@ -499,17 +504,13 @@ export class OrderService implements OnModuleInit {
       throw new BadRequestException('Scheduled date must be in the future');
     }
     if (!orderWithItems.scheduledFor && hasPrepared) {
-      throw new BadRequestException(
-        'Cannot schedule after items prepared',
-      );
+      throw new BadRequestException('Cannot schedule after items prepared');
     } else if (
       orderWithItems.scheduledFor &&
       hasPrepared &&
       scheduledDate > new Date(orderWithItems.scheduledFor)
     ) {
-      throw new BadRequestException(
-        'Cannot reschedule after items prepared',
-      );
+      throw new BadRequestException('Cannot reschedule after items prepared');
     } else {
       orderWithItems.orderStatus = OrderStatus.SCHEDULED;
       await orderWithItems.save();
@@ -531,9 +532,7 @@ export class OrderService implements OnModuleInit {
         (ni) => String(ni._id || ni) === id,
       );
       if (!found) {
-        throw new BadRequestException(
-          'Cannot remove an item already prepared',
-        );
+        throw new BadRequestException('Cannot remove an item already prepared');
       }
     }
   }
@@ -687,18 +686,35 @@ export class OrderService implements OnModuleInit {
   }
 
   private async recomputeTotalAmount(id: string, dto: Partial<Order>) {
-    const ord = await this.orderModel.findById(id).populate('items').exec();
+    const ord = await this.orderModel.findById(id).exec();
     if (!ord) throw new NotFoundException('Order not found after update');
-    const items = (ord.items as any[]) || [];
-    let total = items.reduce((sum, it) => sum + it.price * it.quantity, 0);
+
+    // On lit tous les OrderItem liés, sans repopulate
+    const items = await this.orderItemModel
+      .find({ orderId: this.toObjectId(id) })
+      .lean();
+
+    let total = 0;
+    for (const it of items) {
+      const baseCost = (it as any).price * (it as any).quantity;
+      const extrasCost = ((it as any).ingredientsSnapshot as any[]).reduce(
+        (sum, snap) => sum + snap.unitPrice * snap.quantity,
+        0,
+      );
+      total += ((it as any).price + extrasCost) * (it as any).quantity;
+    }
+
     const type = dto.orderType ?? ord.orderType;
     if (type === OrderType.DELIVERY) {
       const rest = this.restaurantService.getRestaurant();
       if (rest?.deliveryFee != null) total += rest.deliveryFee;
     }
+
     await this.orderModel
       .findByIdAndUpdate(id, { totalAmount: total }, { new: true })
-      .orFail(() => new NotFoundException('Order not found after total update'));
+      .orFail(
+        () => new NotFoundException('Order not found after total update'),
+      );
   }
 
   async updatePosition(
@@ -783,7 +799,8 @@ export class OrderService implements OnModuleInit {
         const prod = await this.orderItemModel.db
           .collection('products')
           .findOne({ _id: this.toObjectId(it.productId) });
-        if (!prod) throw new BadRequestException(`Product not found: ${it.productId}`);
+        if (!prod)
+          throw new BadRequestException(`Product not found: ${it.productId}`);
         if (prod.stock != null && it.quantity > prod.stock) {
           throw new BadRequestException(
             `Not enough stock for '${prod.name}' (requested: ${it.quantity}, available: ${prod.stock})`,
@@ -794,35 +811,95 @@ export class OrderService implements OnModuleInit {
   }
 
   private async _getCartItems(userId: string) {
-    const cart = await this.cartModel.findOne({ userId }).orFail(() => {
+    const cart = await this.cartModel.findOne({ userId }).populate('items.category').orFail(() => {
       throw new BadRequestException('Cart is empty');
     });
     if (!cart.items.length) throw new BadRequestException('Cart is empty');
     return cart.items;
   }
 
-  private _mapItem(item: any) {
+  private async _mapItem(item: any): Promise<Partial<OrderItem>> {
+    // 1) Récupérer le produit “live” pour name+price
+    const prodDoc = await this.orderItemModel.db
+      .collection('products')
+      .findOne({ _id: this.toObjectId(item.productId) });
+    if (!prodDoc) {
+      throw new NotFoundException(`Product not found: ${item.productId}`);
+    }
+
+    const productName: string = prodDoc.name;
+    const productPrice: number =
+      prodDoc.productType === 'multiple_sizes'
+        ? ((prodDoc.sizes || []).find((s: any) => s.name === item.size)
+            ?.price ?? 0)
+        : (prodDoc.basePrice ?? 0);
+
+    // 2) Construire baseIngredientsSnapshot à partir de item.baseIngredients
+    const baseSnapshots: {
+      _id: Types.ObjectId;
+      name: string;
+      unitPrice: number;
+      quantity: number;
+    }[] = [];
+    if (Array.isArray(item.baseIngredients)) {
+      for (const b of item.baseIngredients) {
+        const ingDoc = await this.orderItemModel.db
+          .collection('ingredients')
+          .findOne({ _id: this.toObjectId(b._id) });
+        if (!ingDoc) {
+          throw new NotFoundException(`Base ingredient not found: ${b._id}`);
+        }
+        baseSnapshots.push({
+          _id: ingDoc._id,
+          name: ingDoc.name,
+          unitPrice: typeof ingDoc.price === 'number' ? ingDoc.price : 0,
+          quantity: b.quantity ?? 1,
+        });
+      }
+    }
+
+    // 3) Copier TOUT item.ingredients (brut) dans extraIngredientsSnapshot
+    //    sans retrancher quoi que ce soit à baseSnapshots.
+    const extraSnapshots: {
+      _id: Types.ObjectId;
+      name: string;
+      unitPrice: number;
+      quantity: number;
+    }[] = [];
+    if (Array.isArray(item.ingredients)) {
+      for (const ingRef of item.ingredients as any[]) {
+        const ingDoc = await this.orderItemModel.db
+          .collection('ingredients')
+          .findOne({ _id: this.toObjectId(ingRef._id) });
+        if (!ingDoc) {
+          throw new NotFoundException(
+            `Extra ingredient not found: ${ingRef._id}`,
+          );
+        }
+        extraSnapshots.push({
+          _id: ingDoc._id,
+          name: ingDoc.name,
+          unitPrice: typeof ingDoc.price === 'number' ? ingDoc.price : 0,
+          quantity: ingRef.quantity ?? 1,
+        });
+      }
+    }
+
+    // 4) On renvoie l’objet partiel pour insertMany
     return {
       productId: this.toObjectId(item.productId),
-      name: item.name,
+      name: productName,
+      price: productPrice,
       quantity: item.quantity,
-      price: item.price,
       size: item.size,
       image_url: item.image_url,
-
-      baseIngredients: Array.isArray(item.baseIngredients)
-        ? item.baseIngredients.map((b: any) => ({
-            _id: this.toObjectId(b._id),
-            quantity: b.quantity,
-          }))
-        : [],
-
-      ingredients: Array.isArray(item.ingredients)
-        ? item.ingredients.map((ing: any) => ({
-            _id: this.toObjectId(ing._id),
-            quantity: ing.quantity,
-          }))
-        : [],
+      category: {
+        _id: this.toObjectId(item.category._id),
+        name: item.category.name,
+        idx: item.category.idx,
+      },
+      baseIngredientsSnapshot: baseSnapshots,
+      extraIngredientsSnapshot: extraSnapshots,
     };
   }
 
@@ -916,7 +993,10 @@ export class OrderService implements OnModuleInit {
   }
 
   async getOrderItemLiked(itemId: string): Promise<{ liked: boolean }> {
-    const item = await this.orderItemModel.findById(itemId).select('liked').lean();
+    const item = await this.orderItemModel
+      .findById(itemId)
+      .select('liked')
+      .lean();
     if (!item) throw new NotFoundException('OrderItem not found');
     return { liked: !!item.liked };
   }

@@ -45,11 +45,10 @@ import {
 } from "@/store/slices/cartSlice";
 import { fetchProducts } from "@/store/slices/productSlice";
 import { fetchRestaurantInfo } from "@/store/slices/restaurantSlice";
-
-import axios from "axios";
 import { useRouter } from "next/navigation";
 import { OrderType } from "@/types/order";
 import { RootState } from "@/store/store";
+import api from "@/lib/api";
 
 const STRIPE_PUBLIC_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLIC_KEY!;
 const API_URL = process.env.NEXT_PUBLIC_API_URL!;
@@ -179,19 +178,19 @@ const CartPage: React.FC = () => {
       try {
         if (paymentMethod === "card") {
           const stripe = await loadStripe(STRIPE_PUBLIC_KEY);
-          const { data } = await axios.post(
+          const { data } = await api.post(
             `${API_URL}/payment/stripe`,
             payload
           );
           await stripe?.redirectToCheckout({ sessionId: data.sessionId });
         } else if (paymentMethod === "paypal") {
-          const { data } = await axios.post(
+          const { data } = await api.post(
             `${API_URL}/payment/paypal`,
             payload
           );
           window.location.href = data.approvalUrl;
         } else {
-          const { data } = await axios.post(`${API_URL}/payment/cash`, payload);
+          const { data } = await api.post(`${API_URL}/payment/cash`, payload);
           if (data.success) {
             dispatch(clearCart(userId));
             router.push("/order-confirmation?success=true");

@@ -712,7 +712,7 @@ const MenuManager: React.FC = () => {
                     value={values.ingredients || []}
                     onChange={e => {
                       const val = e.target.value;
-                      setFieldValue('ingredients', typeof val === 'string' ? val.split(',') : val);
+                      setFieldValue('ingredients', Array.isArray(val) ? val.map(v => typeof v === 'string' ? v : v._id) : []);
                     }}
                     onBlur={handleBlur}
                     fullWidth
@@ -782,6 +782,13 @@ const MenuManager: React.FC = () => {
                 <DialogActions>
                   <Button onClick={() => setProdDialogOpen(false)} disabled={isSubmitting}>Cancel</Button>
                   <Button type="submit" variant="contained" disabled={isSubmitting || Object.keys(errors).length > 0}>Save</Button>
+                  { Object.keys(errors).length > 0 && (
+                    <Box sx={{ mt: 2 }}>
+                      <Typography variant="body2" color="error">
+                        {Object.values(errors).join(', ')}
+                      </Typography>
+                    </Box>
+                  )}
                 </DialogActions>
               </Form>
             )}
