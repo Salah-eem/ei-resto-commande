@@ -23,10 +23,13 @@ import { OrderItem, OrderItemDocument } from 'src/schemas/order-item.schema';
 import { endOfDay, startOfDay } from 'date-fns';
 import { SchedulerRegistry, Cron, CronExpression } from '@nestjs/schedule';
 import { DeliveryGateway } from 'src/gateway/delivery.gateway';
+import { MailService } from 'src/mail/mail.service';
+import { User, UserDocument } from 'src/schemas/user.schema';
 
 @Injectable()
 export class OrderService implements OnModuleInit {
   constructor(
+    @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
     @InjectModel(Order.name) private readonly orderModel: Model<OrderDocument>,
     @InjectModel(Cart.name) private readonly cartModel: Model<CartDocument>,
     @InjectModel(OrderItem.name)
@@ -35,6 +38,7 @@ export class OrderService implements OnModuleInit {
     @Inject(forwardRef(() => LiveOrdersGateway))
     private readonly liveOrdersGateway: LiveOrdersGateway,
     private readonly deliveryGateway: DeliveryGateway,
+    private readonly mailService: MailService,
     private readonly schedulerRegistry: SchedulerRegistry,
   ) {}
 
@@ -274,13 +278,12 @@ export class OrderService implements OnModuleInit {
     let itemsSource: any[];
     if (isEmployee) {
       itemsSource = await Promise.all(
-        (dto.items as any[]).map((i) => this._mapItem(i))
+        (dto.items as any[]).map((i) => this._mapItem(i)),
       );
     } else {
       const cartItems = await this._getCartItems(dto.userId);
       itemsSource = await Promise.all(cartItems.map((i) => this._mapItem(i)));
     }
-    console.log('itemsSource', itemsSource);
 
     await this.checkItemsAvailability(itemsSource);
 
@@ -763,12 +766,54 @@ export class OrderService implements OnModuleInit {
     orderId: string,
     status: OrderStatus,
   ): Promise<Order> {
-    const updated = await this.orderModel
+    // 1) Met à jour le statut et récupère la commande mise à jour
+    const updatedOrder = await this.orderModel
       .findByIdAndUpdate(orderId, { orderStatus: status }, { new: true })
+      .populate({
+        path: 'items',
+        model: 'OrderItem',
+        populate: [
+          {
+            path: 'productId',
+            model: 'Product',
+            select: 'name',
+          },
+          {
+            path: 'baseIngredientsSnapshot._id',
+            model: 'Ingredient',
+            select: 'name',
+          },
+          {
+            path: 'extraIngredientsSnapshot._id',
+            model: 'Ingredient',
+            select: 'name',
+          },
+        ],
+      })
       .orFail(() => new NotFoundException('Order not found'));
+
+    // 2) On notifie les websockets
     this.liveOrdersGateway.sendUpdate();
     this.deliveryGateway.emitStatusUpdate(orderId, status);
-    return updated;
+
+    // 3) Si la commande appartient à un client (userId présent) et que l’on a un e-mail,
+    //    on envoie l’e-mail correspondant au type de commande + nouveau statut.
+    console.log('updated order', updatedOrder);
+    if (updatedOrder.userId) {
+      const user = await this.userModel.findById(updatedOrder.userId).lean();
+      const toEmail = user?.email;
+      if (toEmail) {
+        if (status === OrderStatus.PICKED_UP || status === OrderStatus.DELIVERED) {
+          // Fire & forget
+          this.mailService
+            .sendOrderReceipt(toEmail, updatedOrder)
+            .catch((err) => {
+              console.error(`Erreur e-mail Receipt to ${toEmail}:`, err);
+            });
+        }
+      }
+    }
+    return updatedOrder;
   }
 
   async deleteAllOrders(): Promise<any> {
@@ -811,9 +856,12 @@ export class OrderService implements OnModuleInit {
   }
 
   private async _getCartItems(userId: string) {
-    const cart = await this.cartModel.findOne({ userId }).populate('items.category').orFail(() => {
-      throw new BadRequestException('Cart is empty');
-    });
+    const cart = await this.cartModel
+      .findOne({ userId })
+      .populate('items.category')
+      .orFail(() => {
+        throw new BadRequestException('Cart is empty');
+      });
     if (!cart.items.length) throw new BadRequestException('Cart is empty');
     return cart.items;
   }
