@@ -37,6 +37,7 @@ import RestaurantMenuIcon from "@mui/icons-material/RestaurantMenu";
 import DashboardIcon from "@mui/icons-material/Dashboard";
 import GroupIcon from "@mui/icons-material/Group";
 import LogoutIcon from "@mui/icons-material/Logout";
+import { DeliveryDining } from "@mui/icons-material";
 
 const Header = () => {
   const [isCartOpen, setCartOpen] = useState(false);
@@ -64,7 +65,7 @@ const Header = () => {
     router.push("/");
   };
 
-  const handleSidebarOpen = () => setSidebarOpen(true);
+  const handleSidebarOpen = () => setSidebarOpen(!isSidebarOpen);
   const handleSidebarClose = () => setSidebarOpen(false);
 
   return (
@@ -74,14 +75,15 @@ const Header = () => {
         sx={{
           backgroundColor: "#fff",
           boxShadow: "0 2px 10px rgba(0,0,0,0.1)",
-          py: 1,
+          py: { xs: 0.5, md: 1 },
           zIndex: 1300,
         }}
       >
         <Container maxWidth="lg">
-          <Toolbar disableGutters sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            {authToken && !isSidebarOpen && (
-              <IconButton onClick={handleSidebarOpen} sx={{ color: "#008f68", mr: 2 }}>
+          <Toolbar disableGutters sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", minHeight: { xs: 56, sm: 64 } }}>
+            {/* Sidebar IconButton always visible on all screens if logged in */}
+            {authToken && (
+              <IconButton onClick={handleSidebarOpen} sx={{ color: "#008f68", mr: { xs: 1, md: 2 }, display: "flex" }}>
                 <FormatListBulletedIcon fontSize="medium" />
               </IconButton>
             )}
@@ -90,7 +92,7 @@ const Header = () => {
               sx={{
                 flexGrow: 1,
                 display: "flex",
-                justifyContent: "flex-start",
+                justifyContent: { xs: "center", md: "flex-start" },
                 alignItems: "center",
               }}
             >
@@ -98,14 +100,16 @@ const Header = () => {
                 <Image
                   src="/logo.png"
                   alt="RestoCommande Logo"
-                  width={160}
-                  height={50}
-                  style={{ objectFit: "contain" }}
+                  width={120}
+                  height={40}
+                  style={{ objectFit: "contain", width: "auto", height: "40px" }}
+                  sizes="(max-width: 600px) 120px, 160px"
                 />
               </Link>
             </Box>
 
-            <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+            {/* Desktop actions */}
+            <Box sx={{ display: { xs: "none", md: "flex" }, alignItems: "center", gap: 2 }}>
               {authToken && (
                 <>
                   {isAdmin || isEmployee ? (
@@ -118,6 +122,11 @@ const Header = () => {
                       <Link href="/live-orders" style={{ textDecoration: "none" }}>
                         <Button startIcon={<AccessTimeIcon />} color="primary" sx={{ fontWeight: "bold" }}>
                           Live Orders
+                        </Button>
+                      </Link>
+                      <Link href="/delivery-orders" style={{ textDecoration: "none" }}>
+                        <Button startIcon={<DeliveryDining />} color="primary" sx={{ fontWeight: "bold" }}>
+                          Delivery Orders
                         </Button>
                       </Link>
                       <Link href="/view-orders" style={{ textDecoration: "none" }}>
@@ -182,16 +191,49 @@ const Header = () => {
                 </>
               )}
             </Box>
+
+            {/* Mobile actions: hamburger always visible if logged in, cart/login if not */}
+            <Box sx={{ display: { xs: "flex", md: "none" }, alignItems: "center", gap: 1 }}>
+              {!authToken ? (
+                <>
+                  <IconButton color="primary" onClick={() => setCartOpen(true)}>
+                    <Badge badgeContent={totalItems} color="secondary">
+                      <ShoppingCartIcon />
+                    </Badge>
+                  </IconButton>
+                  <Link href="/login" style={{ textDecoration: "none" }}>
+                    <Button
+                      color="secondary"
+                      sx={{
+                        fontWeight: "bold",
+                        border: "2px solid #008f68",
+                        borderRadius: "4px",
+                        backgroundColor: "#008f68",
+                        color: "#fff",
+                        ":hover": { backgroundColor: "#fdb913", color: "#fff", borderColor: "#fdb913" },
+                        transition: "background-color 0.3s",
+                        fontSize: "0.85rem",
+                        px: 1.5,
+                        minWidth: 0,
+                      }}
+                    >
+                      Login
+                    </Button>
+                  </Link>
+                </>
+              ) : null}
+            </Box>
           </Toolbar>
         </Container>
 
         <CartDialog open={isCartOpen} onClose={() => setCartOpen(false)} />
       </AppBar>
 
+      {/* Drawer: add all actions for mobile */}
       <Drawer anchor="left" open={isSidebarOpen} onClose={handleSidebarClose}>
         <Box sx={{ width: 250, p: 2 }}>
           <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2, mt: 10 }}>
-            <Typography variant="h6" sx={{ color: "#008f68", fontWeight: "bold" }}>
+            <Typography variant="h6" sx={{ color: "#008f68", fontWeight: "bold", fontSize: { xs: "1rem", sm: "1.25rem" } }}>
               {userProfile ? `Hello, ${userProfile.firstName}` : "Hello"}
             </Typography>
             <IconButton onClick={handleSidebarClose}>
@@ -209,21 +251,97 @@ const Header = () => {
               </ListItemButton>
             </Link>
 
-            {isAdmin && (
+            {/* Drawer actions: show all except those already in AppBar (header) on desktop, show all on mobile */}
+            {authToken && (
               <>
-                <Link href="/manage-users" style={{ textDecoration: "none", color: "inherit" }}>
-                  <ListItemButton onClick={handleSidebarClose}>
-                    <ListItemIcon><GroupIcon /></ListItemIcon>
-                    <ListItemText primary="Manage Users" />
-                  </ListItemButton>
-                </Link>
-
-                <Link href="/manage-menu" style={{ textDecoration: "none", color: "inherit" }}>
-                  <ListItemButton onClick={handleSidebarClose}>
-                    <ListItemIcon><RestaurantMenuIcon /></ListItemIcon>
-                    <ListItemText primary="Manage Menu" />
-                  </ListItemButton>
-                </Link>
+                {/* On mobile: show all actions for admin/employee */}
+                {(isAdmin || isEmployee) && (
+                  <Box sx={{ display: { xs: "block", md: "none" } }}>
+                    <Link href="/take-order/new" style={{ textDecoration: "none", color: "inherit" }}>
+                      <ListItemButton onClick={handleSidebarClose}>
+                        <ListItemIcon><AddShoppingCartIcon /></ListItemIcon>
+                        <ListItemText primary="Take Order" />
+                      </ListItemButton>
+                    </Link>
+                    <Link href="/live-orders" style={{ textDecoration: "none", color: "inherit" }}>
+                      <ListItemButton onClick={handleSidebarClose}>
+                        <ListItemIcon><AccessTimeIcon /></ListItemIcon>
+                        <ListItemText primary="Live Orders" />
+                      </ListItemButton>
+                    </Link>
+                    <Link href="/delivery-orders" style={{ textDecoration: "none", color: "inherit" }}>
+                      <ListItemButton onClick={handleSidebarClose}>
+                        <ListItemIcon><DeliveryDining /></ListItemIcon>
+                        <ListItemText primary="Delivery Orders" />
+                      </ListItemButton>
+                    </Link>
+                    <Link href="/view-orders" style={{ textDecoration: "none", color: "inherit" }}>
+                      <ListItemButton onClick={handleSidebarClose}>
+                        <ListItemIcon><ListAltIcon /></ListItemIcon>
+                        <ListItemText primary="View Orders" />
+                      </ListItemButton>
+                    </Link>
+                    <Link href="/dashboard" style={{ textDecoration: "none", color: "inherit" }}>
+                      <ListItemButton onClick={handleSidebarClose}>
+                        <ListItemIcon><DashboardIcon /></ListItemIcon>
+                        <ListItemText primary="Dashboard" />
+                      </ListItemButton>
+                    </Link>
+                    <Link href="/manage-users" style={{ textDecoration: "none", color: "inherit" }}>
+                      <ListItemButton onClick={handleSidebarClose}>
+                        <ListItemIcon><GroupIcon /></ListItemIcon>
+                        <ListItemText primary="Manage Users" />
+                      </ListItemButton>
+                    </Link>
+                    <Link href="/manage-menu" style={{ textDecoration: "none", color: "inherit" }}>
+                      <ListItemButton onClick={handleSidebarClose}>
+                        <ListItemIcon><RestaurantMenuIcon /></ListItemIcon>
+                        <ListItemText primary="Manage Menu" />
+                      </ListItemButton>
+                    </Link>
+                  </Box>
+                )}
+                {/* On mobile: show all actions for client */}
+                {isClient && (
+                  <Box sx={{ display: { xs: "block", md: "none" } }}>
+                    <Link href="/" style={{ textDecoration: "none", color: "inherit" }}>
+                      <ListItemButton onClick={handleSidebarClose}>
+                        <ListItemIcon><RestaurantMenuIcon /></ListItemIcon>
+                        <ListItemText primary="Menu" />
+                      </ListItemButton>
+                    </Link>
+                    <Link href="/my-orders" style={{ textDecoration: "none", color: "inherit" }}>
+                      <ListItemButton onClick={handleSidebarClose}>
+                        <ListItemIcon><ListAltIcon /></ListItemIcon>
+                        <ListItemText primary="My Orders" />
+                      </ListItemButton>
+                    </Link>
+                    <ListItemButton onClick={() => { setCartOpen(true); handleSidebarClose(); }}>
+                      <ListItemIcon><ShoppingCartIcon /></ListItemIcon>
+                      <ListItemText primary="Cart" />
+                      <Badge badgeContent={totalItems} color="secondary" sx={{ ml: 1 }}>
+                        {/* visually hidden, just for badge */}
+                      </Badge>
+                    </ListItemButton>
+                  </Box>
+                )}
+                {/* On desktop: show only admin/employee management actions not in AppBar */}
+                {(isAdmin || isEmployee) && (
+                  <Box sx={{ display: { xs: "none", md: "block" } }}>
+                    <Link href="/manage-users" style={{ textDecoration: "none", color: "inherit" }}>
+                      <ListItemButton onClick={handleSidebarClose}>
+                        <ListItemIcon><GroupIcon /></ListItemIcon>
+                        <ListItemText primary="Manage Users" />
+                      </ListItemButton>
+                    </Link>
+                    <Link href="/manage-menu" style={{ textDecoration: "none", color: "inherit" }}>
+                      <ListItemButton onClick={handleSidebarClose}>
+                        <ListItemIcon><RestaurantMenuIcon /></ListItemIcon>
+                        <ListItemText primary="Manage Menu" />
+                      </ListItemButton>
+                    </Link>
+                  </Box>
+                )}
               </>
             )}
 

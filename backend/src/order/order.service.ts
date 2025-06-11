@@ -795,10 +795,11 @@ export class OrderService implements OnModuleInit {
     // 2) On notifie les websockets
     this.liveOrdersGateway.sendUpdate();
     this.deliveryGateway.emitStatusUpdate(orderId, status);
+    this.deliveryGateway.broadcastDeliveryOrders();
 
     // 3) Si la commande appartient à un client (userId présent) et que l’on a un e-mail,
     //    on envoie l’e-mail correspondant au type de commande + nouveau statut.
-    console.log('updated order', updatedOrder);
+    // console.log('updated order', updatedOrder);
     if (updatedOrder.userId) {
       const user = await this.userModel.findById(updatedOrder.userId).lean();
       const toEmail = user?.email;
@@ -1017,6 +1018,35 @@ export class OrderService implements OnModuleInit {
     await this.promoteScheduledOrdersIfDue();
   }
 
+  // ------------------------------------------------------------
+  // Cron: Promote PREPARED orders to READY_FOR_PICKUP/DELIVERY after 10min
+  // ------------------------------------------------------------
+  @Cron(CronExpression.EVERY_MINUTE, { name: 'promotePreparedOrders' })
+  async promotePreparedOrdersCron() {
+    const tenMinutesAgo = new Date(Date.now() - 1 * 60 * 1000);
+    const preparedOrders = await this.orderModel.find({
+      orderStatus: OrderStatus.PREPARED,
+      updatedAt: { $lte: tenMinutesAgo },
+    }).lean();
+    if (!preparedOrders.length) return;
+    const bulk = this.orderModel.collection.initializeUnorderedBulkOp();
+    let changed = false;
+    for (const order of preparedOrders) {
+      if (order.orderType === OrderType.PICKUP) {
+        bulk.find({ _id: order._id }).updateOne({ $set: { orderStatus: OrderStatus.READY_FOR_PICKUP } });
+        changed = true;
+      } else if (order.orderType === OrderType.DELIVERY) {
+        bulk.find({ _id: order._id }).updateOne({ $set: { orderStatus: OrderStatus.READY_FOR_DELIVERY } });
+        changed = true;
+      }
+    }
+    if (changed) {
+      await bulk.execute();
+      this.liveOrdersGateway.sendUpdate();
+      this.deliveryGateway.broadcastDeliveryOrders();
+    }
+  }
+
   startPromoteScheduledCron() {
     const job = this.schedulerRegistry.getCronJob('promoteScheduledOrders');
     job.start();
@@ -1024,6 +1054,16 @@ export class OrderService implements OnModuleInit {
 
   stopPromoteScheduledCron() {
     const job = this.schedulerRegistry.getCronJob('promoteScheduledOrders');
+    job.stop();
+  }
+
+  startPromotePreparedCron() {
+    const job = this.schedulerRegistry.getCronJob('promotePreparedOrders');
+    job.start();
+  }
+
+  stopPromotePreparedCron() {
+    const job = this.schedulerRegistry.getCronJob('promotePreparedOrders');
     job.stop();
   }
 
