@@ -61,7 +61,7 @@ const pulse = keyframes`
 
 const DELIVERY_STATUSES = [
   { key: 'confirmed',         label: 'Confirmed',         icon: <RestaurantIcon /> },
-  { key: ['in preparation', 'prepared'],    label: 'Preparing',         icon: <RestaurantIcon /> },
+  { key: ['in preparation', 'prepared', 'ready for delivery'],    label: 'Preparing',         icon: <RestaurantIcon /> },
   // { key: 'ready for delivery',label: 'Ready',             icon: <CheckIcon /> },
   { key: 'out for delivery',  label: 'Out for Delivery',  icon: <DeliveryIcon /> },
   { key: 'delivered',         label: 'Delivered',         icon: <HomeIcon /> },
@@ -175,7 +175,9 @@ export default function OrderTrackingPage() {
   // socket updates: location & status
   useEffect(() => {
     if (!orderId) return;
-    const socket = io(process.env.NEXT_PUBLIC_API_URL!);
+    const socket = io(process.env.NEXT_PUBLIC_API_URL! + '/delivery', {
+      transports: ['websocket'],
+    });
     socket.emit('joinOrder', orderId);
 
     socket.on('locationUpdate', async ({ lat, lng }) => {
@@ -228,7 +230,7 @@ export default function OrderTrackingPage() {
   const currentIdx = getStatusIndex(status, type);
 
   // Determine what content to show based on order status
-  const isPreparingPhase = ['confirmed', 'in preparation', 'prepared'].includes(status);
+  const isPreparingPhase = ['confirmed', 'in preparation', 'prepared', 'ready for delivery'].includes(status);
   const isReadyForPickup = status === 'ready for pickup' && type === 'pickup';
   const isOutForDelivery = status === 'out for delivery';
   const isDeliveryType = type === 'delivery';

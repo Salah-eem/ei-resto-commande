@@ -9,6 +9,7 @@ import { UserSchema } from 'src/schemas/user.schema';
 import { OrderItemSchema } from 'src/schemas/order-item.schema';
 import { UserService } from 'src/user/user.service';
 import { DeliveryGateway } from 'src/gateway/delivery.gateway';
+import { MailService } from 'src/mail/mail.service';
 
 @Module({
   imports: [MongooseModule.forFeature([{ name: 'Order', schema: OrderSchema}]),
@@ -18,6 +19,7 @@ import { DeliveryGateway } from 'src/gateway/delivery.gateway';
   providers: [
     OrderService, 
     UserService,
+    MailService,
     LiveOrdersGateway,
     DeliveryGateway,
     {

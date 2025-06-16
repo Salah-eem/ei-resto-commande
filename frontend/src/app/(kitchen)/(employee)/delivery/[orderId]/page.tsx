@@ -8,10 +8,12 @@ import { useAppDispatch, useAppSelector } from '@/store/slices/hooks';
 import { fetchOrder } from "@/store/slices/orderSlice";
 import ProtectRoute from "@/components/ProtectRoute";
 import { Role } from "@/types/user";
+import { fetchRestaurantInfo } from '@/store/slices/restaurantSlice';
 
 const DeliverySimulatorPage = () => {
   const dispatch = useAppDispatch();
   const { orderId } = useParams();
+  const { restaurantAddress } = useAppSelector((state) => state.restaurant);
   const { order, loading, error } = useAppSelector((state) => state.order);
   const [socket, setSocket] = useState<any>(null);
   const [isSimulating, setIsSimulating] = useState(false);
@@ -21,12 +23,15 @@ const DeliverySimulatorPage = () => {
   useEffect(() => {
     if (orderId && typeof orderId === 'string') {
       dispatch(fetchOrder(orderId));
+      dispatch(fetchRestaurantInfo() as any);
     }
   }, [orderId, dispatch]);
 
   // ➤ Connexion socket
   useEffect(() => {
-    const newSocket = io(process.env.NEXT_PUBLIC_API_URL!);
+    const newSocket = io(process.env.NEXT_PUBLIC_API_URL!+'/delivery', {
+      transports: ['websocket'],
+    });
     setSocket(newSocket);
 
     return () => {
@@ -34,7 +39,7 @@ const DeliverySimulatorPage = () => {
     };
   }, []);
 
-  // ➤ Récupérer trajet depuis ORS dès que commande chargée
+  // ➤ Générer les positions du trajet réel avec OpenRouteService
   useEffect(() => {
     const fetchRoute = async (start: { lat: number; lng: number }, end: { lat: number; lng: number }) => {
       try {
@@ -51,34 +56,31 @@ const DeliverySimulatorPage = () => {
             ],
           }),
         });
-
         const data = await res.json();
         const routeCoords = data.features[0].geometry.coordinates.map((coord: any) => ({
           lat: coord[1],
           lng: coord[0],
         }));
-
-        console.log('🛣️ Route récupérée:', routeCoords);
         setPositions(routeCoords);
       } catch (err) {
+        setPositions([]);
         console.error('Erreur récupération ORS:', err);
       }
     };
 
-    if (order && order.deliveryAddress) {
-      const start = { lat: 50.8503, lng: 4.3517 }; // Position restaurant
+    if (order && order.deliveryAddress && restaurantAddress) {
+      const start = { lat: restaurantAddress.lat, lng: restaurantAddress.lng };
       const end = {
         lat: order.deliveryAddress.lat,
         lng: order.deliveryAddress.lng,
       };
-
       fetchRoute(start, end);
     }
-  }, [order]);
+  }, [order, restaurantAddress]);
 
   // ➤ Démarrer la simulation
   const startSimulation = () => {
-    if (!socket || !orderId || positions.length === 0) return;
+    if (!socket || !orderId) return;
 
     socket.emit('joinOrder', orderId as string);
     setIsSimulating(true);
@@ -96,7 +98,7 @@ const DeliverySimulatorPage = () => {
       console.log('📍 Envoi position:', currentPos);
       socket.emit('updatePosition', { orderId, lat: currentPos.lat, lng: currentPos.lng });
       index++;
-    }, 1500); // tu peux ajuster la vitesse ici
+    }, 5000); // tu peux ajuster la vitesse ici
   };
 
   return (
@@ -119,7 +121,7 @@ const DeliverySimulatorPage = () => {
 
         <Button
           variant="contained"
-          disabled={isSimulating || positions.length === 0}
+          disabled={isSimulating }
           onClick={startSimulation}
         >
           {isSimulating ? 'Simulating...' : 'Start Delivery Simulation'}

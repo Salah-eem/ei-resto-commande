@@ -23,10 +23,13 @@ import { OrderItem, OrderItemDocument } from 'src/schemas/order-item.schema';
 import { endOfDay, startOfDay } from 'date-fns';
 import { SchedulerRegistry, Cron, CronExpression } from '@nestjs/schedule';
 import { DeliveryGateway } from 'src/gateway/delivery.gateway';
+import { MailService } from 'src/mail/mail.service';
+import { User, UserDocument } from 'src/schemas/user.schema';
 
 @Injectable()
 export class OrderService implements OnModuleInit {
   constructor(
+    @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
     @InjectModel(Order.name) private readonly orderModel: Model<OrderDocument>,
     @InjectModel(Cart.name) private readonly cartModel: Model<CartDocument>,
     @InjectModel(OrderItem.name)
@@ -35,6 +38,7 @@ export class OrderService implements OnModuleInit {
     @Inject(forwardRef(() => LiveOrdersGateway))
     private readonly liveOrdersGateway: LiveOrdersGateway,
     private readonly deliveryGateway: DeliveryGateway,
+    private readonly mailService: MailService,
     private readonly schedulerRegistry: SchedulerRegistry,
   ) {}
 
@@ -70,6 +74,13 @@ export class OrderService implements OnModuleInit {
       path: 'userId',
       model: 'User',
       select: 'firstName phone',
+    };
+  }
+  private getDeliveryDriverPopulate() {
+    return {
+      path: 'deliveryDriver',
+      model: 'User',
+      select: 'email firstName lastName phone',
     };
   }
 
@@ -206,6 +217,7 @@ export class OrderService implements OnModuleInit {
         populate: this.getOrderItemPopulate(),
       })
       .populate(this.getUserPopulate())
+      .populate(this.getDeliveryDriverPopulate())
       .lean();
 
     if (!raw?.length) return [];
@@ -274,13 +286,12 @@ export class OrderService implements OnModuleInit {
     let itemsSource: any[];
     if (isEmployee) {
       itemsSource = await Promise.all(
-        (dto.items as any[]).map((i) => this._mapItem(i))
+        (dto.items as any[]).map((i) => this._mapItem(i)),
       );
     } else {
       const cartItems = await this._getCartItems(dto.userId);
       itemsSource = await Promise.all(cartItems.map((i) => this._mapItem(i)));
     }
-    console.log('itemsSource', itemsSource);
 
     await this.checkItemsAvailability(itemsSource);
 
@@ -722,7 +733,10 @@ export class OrderService implements OnModuleInit {
     pos: { lat: number; lng: number },
   ): Promise<Order> {
     const updated = await this.orderModel
-      .findByIdAndUpdate(id, { deliveryPosition: pos }, { new: true })
+      .findByIdAndUpdate(id, 
+        { lastDeliveryPosition: pos, 
+          $push: { positionHistory: { ...pos, timestamp: new Date() } } }, 
+          { new: true })
       .orFail(() => new NotFoundException('Order not found'));
     this.deliveryGateway.emitPositionUpdate(id, pos.lat, pos.lng);
     return updated;
@@ -762,13 +776,57 @@ export class OrderService implements OnModuleInit {
   async updateOrderStatus(
     orderId: string,
     status: OrderStatus,
+    loggedUserId = null
   ): Promise<Order> {
-    const updated = await this.orderModel
+    // 1) Met à jour le statut et récupère la commande mise à jour
+    let updatedOrder = await this.orderModel
       .findByIdAndUpdate(orderId, { orderStatus: status }, { new: true })
+      .populate({
+        path: 'items',
+        model: 'OrderItem',
+        populate: [
+          {
+            path: 'productId',
+            model: 'Product',
+            select: 'name',
+          },
+          {
+            path: 'baseIngredientsSnapshot._id',
+            model: 'Ingredient',
+            select: 'name',
+          },
+          {
+            path: 'extraIngredientsSnapshot._id',
+            model: 'Ingredient',
+            select: 'name',
+          },
+        ],
+      })
       .orFail(() => new NotFoundException('Order not found'));
+
+    // 2) On notifie les websockets
     this.liveOrdersGateway.sendUpdate();
     this.deliveryGateway.emitStatusUpdate(orderId, status);
-    return updated;
+    this.deliveryGateway.broadcastDeliveryOrders();
+
+    // 3) Si la commande appartient à un client (userId présent) et que l’on a un e-mail,
+    //    on envoie l’e-mail correspondant au type de commande + nouveau statut.
+    // console.log('updated order', updatedOrder);
+    if (updatedOrder.userId) {
+      const user = await this.userModel.findById(updatedOrder.userId).lean();
+      const toEmail = user?.email;
+      if (toEmail) {
+        if (status === OrderStatus.PICKED_UP || status === OrderStatus.DELIVERED) {
+          // Fire & forget
+          this.mailService
+            .sendOrderReceipt(toEmail, updatedOrder)
+            .catch((err) => {
+              console.error(`Erreur e-mail Receipt to ${toEmail}:`, err);
+            });
+        }
+      }
+    }
+    return updatedOrder;
   }
 
   async deleteAllOrders(): Promise<any> {
@@ -811,9 +869,12 @@ export class OrderService implements OnModuleInit {
   }
 
   private async _getCartItems(userId: string) {
-    const cart = await this.cartModel.findOne({ userId }).populate('items.category').orFail(() => {
-      throw new BadRequestException('Cart is empty');
-    });
+    const cart = await this.cartModel
+      .findOne({ userId })
+      .populate('items.category')
+      .orFail(() => {
+        throw new BadRequestException('Cart is empty');
+      });
     if (!cart.items.length) throw new BadRequestException('Cart is empty');
     return cart.items;
   }
@@ -969,6 +1030,35 @@ export class OrderService implements OnModuleInit {
     await this.promoteScheduledOrdersIfDue();
   }
 
+  // ------------------------------------------------------------
+  // Cron: Promote PREPARED orders to READY_FOR_PICKUP/DELIVERY after 10min
+  // ------------------------------------------------------------
+  @Cron(CronExpression.EVERY_MINUTE, { name: 'promotePreparedOrders' })
+  async promotePreparedOrdersCron() {
+    const tenMinutesAgo = new Date(Date.now() - 1 * 60 * 1000);
+    const preparedOrders = await this.orderModel.find({
+      orderStatus: OrderStatus.PREPARED,
+      updatedAt: { $lte: tenMinutesAgo },
+    }).lean();
+    if (!preparedOrders.length) return;
+    const bulk = this.orderModel.collection.initializeUnorderedBulkOp();
+    let changed = false;
+    for (const order of preparedOrders) {
+      if (order.orderType === OrderType.PICKUP) {
+        bulk.find({ _id: order._id }).updateOne({ $set: { orderStatus: OrderStatus.READY_FOR_PICKUP } });
+        changed = true;
+      } else if (order.orderType === OrderType.DELIVERY) {
+        bulk.find({ _id: order._id }).updateOne({ $set: { orderStatus: OrderStatus.READY_FOR_DELIVERY } });
+        changed = true;
+      }
+    }
+    if (changed) {
+      await bulk.execute();
+      this.liveOrdersGateway.sendUpdate();
+      this.deliveryGateway.broadcastDeliveryOrders();
+    }
+  }
+
   startPromoteScheduledCron() {
     const job = this.schedulerRegistry.getCronJob('promoteScheduledOrders');
     job.start();
@@ -976,6 +1066,16 @@ export class OrderService implements OnModuleInit {
 
   stopPromoteScheduledCron() {
     const job = this.schedulerRegistry.getCronJob('promoteScheduledOrders');
+    job.stop();
+  }
+
+  startPromotePreparedCron() {
+    const job = this.schedulerRegistry.getCronJob('promotePreparedOrders');
+    job.start();
+  }
+
+  stopPromotePreparedCron() {
+    const job = this.schedulerRegistry.getCronJob('promotePreparedOrders');
     job.stop();
   }
 
@@ -1000,4 +1100,34 @@ export class OrderService implements OnModuleInit {
     if (!item) throw new NotFoundException('OrderItem not found');
     return { liked: !!item.liked };
   }
+
+  // Assign a delivery driver to an order
+  async assignDeliveryDriver(driverId: string, orderId: string): Promise<Order> {
+    const updatedOrder = await this.orderModel
+      .findByIdAndUpdate(orderId, { deliveryDriver: driverId }, { new: true })
+      .populate({
+        path: 'items',
+        model: 'OrderItem',
+        populate: this.getOrderItemPopulate(),
+      })
+      .orFail(() => new NotFoundException('Order not found'));
+    return updatedOrder;
+  }
+
+  // Récupérer les commandes livrées par un utilisateur
+  async getDeliveredOrdersByUser(userId: string): Promise<any[]> {
+    const raw = await this.orderModel
+      .find({ deliveryDriver: userId, orderStatus: OrderStatus.DELIVERED })
+      .sort('-createdAt')
+      .populate({
+        path: 'items',
+        model: 'OrderItem',
+        populate: this.getOrderItemPopulate(),
+      })
+      .populate(this.getUserPopulate())
+      .lean();
+
+    return raw.map((o) => this.mapOrder(o));
+  }
+
 }

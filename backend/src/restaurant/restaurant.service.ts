@@ -175,8 +175,55 @@ export class RestaurantService implements OnModuleInit {
         date: format(start, 'yyyy-MM-dd'),
         value,
       });
-    }
+    }    return result;
+  }
 
-    return result;
+  // 📌 Statistiques de livraison pour l'application mobile
+  async getDeliveryStats() {
+    const now = new Date();
+    const startOfToday = startOfDay(now);
+    const endOfToday = endOfDay(now);
+
+    // Commandes livrées aujourd'hui
+    const deliveredToday = await this.orderModel.countDocuments({
+      orderStatus: 'delivered',
+      updatedAt: { $gte: startOfToday, $lte: endOfToday },
+    });
+
+    // Revenus d'aujourd'hui
+    const todayRevenue = await this.orderModel.aggregate([
+      {
+        $match: {
+          orderStatus: 'delivered',
+          updatedAt: { $gte: startOfToday, $lte: endOfToday },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: '$totalAmount' },
+        },
+      },
+    ]);
+
+    // Commandes en attente de livraison
+    const pendingDeliveries = await this.orderModel.countDocuments({
+      orderStatus: { $in: ['ready for delivery', 'out for delivery'] },
+    });
+
+    // Commandes en préparation
+    const inProgressDeliveries = await this.orderModel.countDocuments({
+      orderStatus: 'in preparation',
+    });
+
+    return {
+      deliveredToday,
+      todayRevenue: todayRevenue[0]?.total || 0,
+      totalRevenue: todayRevenue[0]?.total || 0,
+      pendingDeliveries,
+      inProgressDeliveries,
+      averageDeliveryTime: 25, // TODO: calculer le temps moyen réel
+      averageRating: 4.8, // TODO: récupérer les vraies notes
+    };
   }
 }

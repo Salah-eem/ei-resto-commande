@@ -9,7 +9,7 @@ import { Server, Socket } from 'socket.io';
 import { forwardRef, Inject, Logger } from '@nestjs/common';
 import { OrderService } from 'src/order/order.service';
 
-@WebSocketGateway({ cors: true })
+@WebSocketGateway({ namespace: '/live-orders', cors: true })
 export class LiveOrdersGateway
   implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
 {

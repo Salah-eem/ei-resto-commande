@@ -18,6 +18,10 @@ import { IngredientModule } from './ingredient/ingredient.module';
 import { APP_GUARD } from '@nestjs/core';
 import { RolesGuard } from './auth/guard/roles.guard';
 import { JwtGuard } from './auth/guard/jwt.guard';
+import { MailModule } from './mail/mail.module';
+import { MailerModule } from '@nestjs-modules/mailer';
+import { HandlebarsAdapter } from '@nestjs-modules/mailer/dist/adapters/handlebars.adapter';
+import { join } from 'path';
 
 @Module({
   imports: [
@@ -39,6 +43,29 @@ import { JwtGuard } from './auth/guard/jwt.guard';
     RestaurantModule,
     CommonModule,
     IngredientModule,
+    MailModule,
+    // --- Configuration globale du MailerModule ---
+    MailerModule.forRoot({
+      transport: {
+        host: 'smtp.gmail.com',  // serveur SMTP de Gmail
+        port: 587,
+        secure: false,                          // true → port 465, false → port 587
+        auth: {
+          user: process.env.SMTP_USER,          // votre compte SMTP
+          pass: process.env.SMTP_PASS,          // son mot de passe
+        },
+      },
+      defaults: {
+        from: '"Resto Commande" <no-reply@restocommande.com>',
+      },
+      template: {
+        dir: join(__dirname, 'templates'),      // dossier où mettre les templates (optionnel)
+        adapter: new HandlebarsAdapter(),       // adapter pour Handlebars (mais vous pouvez envoyer du simple HTML aussi)
+        options: {
+          strict: true,
+        },
+      },
+    }),
   ],
   controllers: [],
   providers: [

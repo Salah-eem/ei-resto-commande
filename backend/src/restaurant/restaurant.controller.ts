@@ -33,4 +33,9 @@ export class RestaurantController {
         return this.restaurantService.getDashboardHistory(metric);
     }
 
+    // 📌 Statistiques de livraison pour l'app mobile
+    @Get('delivery-stats')
+    async getDeliveryStats() {
+        return this.restaurantService.getDeliveryStats();
+    }
 }
