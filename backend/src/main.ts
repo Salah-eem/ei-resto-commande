@@ -30,6 +30,7 @@ async function bootstrap() {
       'http://10.50.104.232:8081', // Dev delivery app (IP locale)
       'http://10.50.104.232:8082', // Dev delivery app (IP locale, port alternatif)
       'http://10.50.104.232:8083', // Dev delivery app (IP locale, port alternatif)
+      'https://resto-commande-delivery-driver--bifzw1x5p6.expo.app', // delivery app prod
       'http://localhost:3000', // Dev
       'https://ei-resto-commande.vercel.app' // Production
     ],

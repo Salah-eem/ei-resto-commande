@@ -76,6 +76,13 @@ export class OrderService implements OnModuleInit {
       select: 'firstName phone',
     };
   }
+  private getDeliveryDriverPopulate() {
+    return {
+      path: 'deliveryDriver',
+      model: 'User',
+      select: 'email firstName lastName phone',
+    };
+  }
 
   // -----------------------------------
   // Map a populated ingredient → plain
@@ -210,6 +217,7 @@ export class OrderService implements OnModuleInit {
         populate: this.getOrderItemPopulate(),
       })
       .populate(this.getUserPopulate())
+      .populate(this.getDeliveryDriverPopulate())
       .lean();
 
     if (!raw?.length) return [];
@@ -725,7 +733,10 @@ export class OrderService implements OnModuleInit {
     pos: { lat: number; lng: number },
   ): Promise<Order> {
     const updated = await this.orderModel
-      .findByIdAndUpdate(id, { deliveryPosition: pos }, { new: true })
+      .findByIdAndUpdate(id, 
+        { lastDeliveryPosition: pos, 
+          $push: { positionHistory: { ...pos, timestamp: new Date() } } }, 
+          { new: true })
       .orFail(() => new NotFoundException('Order not found'));
     this.deliveryGateway.emitPositionUpdate(id, pos.lat, pos.lng);
     return updated;
@@ -765,9 +776,10 @@ export class OrderService implements OnModuleInit {
   async updateOrderStatus(
     orderId: string,
     status: OrderStatus,
+    loggedUserId = null
   ): Promise<Order> {
     // 1) Met à jour le statut et récupère la commande mise à jour
-    const updatedOrder = await this.orderModel
+    let updatedOrder = await this.orderModel
       .findByIdAndUpdate(orderId, { orderStatus: status }, { new: true })
       .populate({
         path: 'items',
@@ -1088,4 +1100,34 @@ export class OrderService implements OnModuleInit {
     if (!item) throw new NotFoundException('OrderItem not found');
     return { liked: !!item.liked };
   }
+
+  // Assign a delivery driver to an order
+  async assignDeliveryDriver(driverId: string, orderId: string): Promise<Order> {
+    const updatedOrder = await this.orderModel
+      .findByIdAndUpdate(orderId, { deliveryDriver: driverId }, { new: true })
+      .populate({
+        path: 'items',
+        model: 'OrderItem',
+        populate: this.getOrderItemPopulate(),
+      })
+      .orFail(() => new NotFoundException('Order not found'));
+    return updatedOrder;
+  }
+
+  // Récupérer les commandes livrées par un utilisateur
+  async getDeliveredOrdersByUser(userId: string): Promise<any[]> {
+    const raw = await this.orderModel
+      .find({ deliveryDriver: userId, orderStatus: OrderStatus.DELIVERED })
+      .sort('-createdAt')
+      .populate({
+        path: 'items',
+        model: 'OrderItem',
+        populate: this.getOrderItemPopulate(),
+      })
+      .populate(this.getUserPopulate())
+      .lean();
+
+    return raw.map((o) => this.mapOrder(o));
+  }
+
 }

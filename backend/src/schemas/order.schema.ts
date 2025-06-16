@@ -95,6 +95,16 @@ export class Order extends Document {
   })
   positionHistory: (Address & { timestamp: Date })[];
 
+  @Prop({
+    type: {
+      lat: { type: Number, required: true },
+      lng: { type: Number, required: true },
+      timestamp: { type: Date, default: Date.now },
+    },
+    default: null,
+  })
+  lastDeliveryPosition: { lat: number; lng: number; timestamp: Date } | null;
+
   @Prop({ type: Date, default: null })
   lastPositionUpdate: Date;
 

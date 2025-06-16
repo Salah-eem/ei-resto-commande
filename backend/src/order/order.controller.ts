@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Post, Body, Put, Delete, Request, Patch, SetMetadata } from '@nestjs/common';
+import { Controller, Get, Param, Post, Body, Put, Delete, Request, Patch, SetMetadata, ForbiddenException } from '@nestjs/common';
 import { OrderService } from './order.service';
 import { Order, OrderStatus, PaymentStatus } from 'src/schemas/order.schema';
 import { GetUser } from 'src/common/decorators/get-user.decorator';
@@ -61,6 +61,16 @@ export class OrderController {
       return this.orderService.getOrdersByUser(userId);
     }
 
+    // 📌 Récupérer les commandes livrée par un utilisateur
+    @Roles(Role.Admin, Role.Employee)
+    @Get('deliveries/history')
+    async getDeliveredOrdersByUser(@GetUser() user: any): Promise<Order[]> {
+      if (!user) {
+        throw new ForbiddenException('You must be logged in to access this resource.');
+      }
+      return this.orderService.getDeliveredOrdersByUser(user.userId);
+    }
+
     // 📌 Récupérer une commande
     @Public()
     @Get(':id')
@@ -119,6 +129,12 @@ export class OrderController {
       @Body() body: { itemId: string },
     ) {
       return this.orderService.validateOrderItem(orderId, body.itemId);
+    }
+
+    @Roles(Role.Admin, Role.Employee)
+    @Put(':orderId/assign-delivery-driver')
+    async assignDeliveryDriver(@GetUser() loggedUser: any, @Param('orderId') orderId: string): Promise<Order> {
+      return this.orderService.assignDeliveryDriver(loggedUser.userId, orderId);
     }
 
     // 📌 Mettre à jour le statut d'une commande (Ex: après paiement)
