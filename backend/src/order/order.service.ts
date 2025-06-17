@@ -1128,6 +1128,185 @@ export class OrderService implements OnModuleInit {
       .lean();
 
     return raw.map((o) => this.mapOrder(o));
+  }  async getQuickStats(userId?: string): Promise<{
+    todayOrders: number;
+    activeDeliveries: number;
+    totalRevenue: number;
+    averageDeliveryTime: number;
+    completionRate: number;
+    pendingOrders: number;
+    inProgressOrders: number;
+    deliveredToday: number;
+    avgOrderValue: number;
+    onTimeDeliveryRate: number;
+  }> {
+    try {      
+      const today = new Date();
+      const startOfToday = startOfDay(today);
+      const endOfToday = endOfDay(today);
+
+      // Debug logging
+      console.log('GetQuickStats called with userId:', userId);
+      console.log('Date range:', { startOfToday, endOfToday });
+
+      // Build base filters - if userId is provided, filter for that specific driver
+      const baseFilter: any = {};
+      const todayFilter: any = {
+        createdAt: { $gte: startOfToday, $lte: endOfToday }
+      };
+
+      // If userId is provided, filter for driver-specific stats
+      if (userId) {
+        baseFilter.deliveryDriver = userId;
+        todayFilter.deliveryDriver = userId;
+        console.log('Filtering for driver:', userId);
+      } else {
+        console.log('No driver filter applied - getting global stats');
+      }
+
+      // Debug: Check total orders in database
+      const totalOrdersCount = await this.orderModel.countDocuments();
+      console.log('Total orders in database:', totalOrdersCount);      // Debug: Check orders for today without driver filter
+      const todayOrdersGlobal = await this.orderModel.countDocuments({
+        createdAt: { $gte: startOfToday, $lte: endOfToday }
+      });
+      console.log('Today orders (global):', todayOrdersGlobal);
+
+      // If userId is provided, filter for driver-specific stats
+      if (userId) {
+        baseFilter.deliveryDriver = userId;
+        todayFilter.deliveryDriver = userId;
+      }
+
+      // Parallel queries for better performance
+      const [
+        todayOrdersCount,
+        activeDeliveriesCount,
+        todayOrders,
+        deliveryOrders,
+        completedDeliveries
+      ] = await Promise.all([
+        // Total orders today
+        this.orderModel.countDocuments(todayFilter),
+        
+        // Active deliveries (out for delivery or ready for delivery)
+        this.orderModel.countDocuments({
+          ...baseFilter,
+          orderStatus: { 
+            $in: [OrderStatus.OUT_FOR_DELIVERY, OrderStatus.READY_FOR_DELIVERY] 
+          }
+        }),        // Today's orders with details for calculations
+        this.orderModel
+          .find(todayFilter)
+          .select('totalAmount orderStatus createdAt updatedAt orderType positionHistory')
+          .lean(),
+        
+        // Current delivery orders
+        this.orderModel
+          .find({
+            ...baseFilter,
+            orderType: OrderType.DELIVERY,
+            orderStatus: { 
+              $in: [
+                OrderStatus.READY_FOR_DELIVERY, 
+                OrderStatus.OUT_FOR_DELIVERY,
+                OrderStatus.IN_PREPARATION,
+                OrderStatus.PREPARED
+              ] 
+            }
+          })
+          .select('orderStatus')
+          .lean(),
+          // Completed deliveries today for time analysis
+        this.orderModel
+          .find({
+            ...todayFilter,
+            orderStatus: OrderStatus.DELIVERED,
+            orderType: OrderType.DELIVERY
+          })
+          .select('createdAt updatedAt positionHistory')
+          .lean()
+      ]);
+
+      // Calculate total revenue for today
+      const totalRevenue = todayOrders.reduce(
+        (sum, order) => sum + (order.totalAmount || 0), 
+        0
+      );
+
+      // Calculate delivered orders today
+      const deliveredToday = todayOrders.filter(
+        order => order.orderStatus === OrderStatus.DELIVERED
+      ).length;
+
+      // Calculate completion rate (delivered vs total orders today)
+      const completionRate = todayOrdersCount > 0 
+        ? (deliveredToday / todayOrdersCount) * 100 
+        : 0;
+
+      // Calculate average order value
+      const avgOrderValue = todayOrdersCount > 0 
+        ? totalRevenue / todayOrdersCount 
+        : 0;
+
+      // Calculate average delivery time
+      let averageDeliveryTime = 0;
+      let onTimeDeliveries = 0;
+        if (completedDeliveries.length > 0) {
+        const deliveryTimes = completedDeliveries
+          .map(order => {
+            const createdAt = new Date(order.createdAt);
+            const deliveredAt = new Date((order as any).updatedAt);
+            const deliveryTime = (deliveredAt.getTime() - createdAt.getTime()) / (1000 * 60); // in minutes
+            
+            // Count on-time deliveries (within 45 minutes)
+            if (deliveryTime <= 45) {
+              onTimeDeliveries++;
+            }
+            
+            return deliveryTime;
+          })
+          .filter(time => time > 0 && time < 300); // Filter out invalid times (> 5 hours)
+
+        if (deliveryTimes.length > 0) {
+          averageDeliveryTime = deliveryTimes.reduce((sum, time) => sum + time, 0) / deliveryTimes.length;
+        }
+      }
+
+      // Calculate on-time delivery rate
+      const onTimeDeliveryRate = completedDeliveries.length > 0 
+        ? (onTimeDeliveries / completedDeliveries.length) * 100 
+        : 0;
+
+      // Count pending and in-progress orders
+      const pendingOrders = deliveryOrders.filter(
+        order => order.orderStatus === OrderStatus.READY_FOR_DELIVERY
+      ).length;
+
+      const inProgressOrders = deliveryOrders.filter(
+        order => order.orderStatus === OrderStatus.OUT_FOR_DELIVERY
+      ).length;
+
+      const quickStats = {
+        todayOrders: todayOrdersCount,
+        activeDeliveries: activeDeliveriesCount,
+        totalRevenue: Math.round(totalRevenue * 100) / 100,
+        averageDeliveryTime: Math.round(averageDeliveryTime),
+        completionRate: Math.round(completionRate * 100) / 100,
+        pendingOrders,
+        inProgressOrders,
+        deliveredToday,
+        avgOrderValue: Math.round(avgOrderValue * 100) / 100,
+        onTimeDeliveryRate: Math.round(onTimeDeliveryRate * 100) / 100,
+      };
+
+      console.log('Quick stats calculated:', quickStats);
+      return quickStats;
+
+    } catch (error) {
+      console.error('Error calculating quick stats:', error);
+      throw new BadRequestException('Failed to calculate quick statistics');
+    }
   }
 
 }

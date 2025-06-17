@@ -71,6 +71,15 @@ export class OrderController {
       return this.orderService.getDeliveredOrdersByUser(user.userId);
     }
 
+    @Roles(Role.Admin, Role.Employee)
+    @Get('stats/quick')
+    async getQuickStats(@GetUser() user: any): Promise<any> {
+      if (!user) {
+        throw new ForbiddenException('You must be logged in to access this resource.');
+      }
+      return this.orderService.getQuickStats(user.userId);
+    }
+
     // 📌 Récupérer une commande
     @Public()
     @Get(':id')

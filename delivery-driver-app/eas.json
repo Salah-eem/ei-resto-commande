@@ -1,0 +1,48 @@
+{
+  "cli": {
+    "version": ">= 7.8.0",
+    "appVersionSource": "local"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "http://localhost:3001",
+        "EAS_SKIP_AUTO_FINGERPRINT": "1"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "ios": {
+        "simulator": true
+      },
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://restocommande.onrender.com",
+        "EAS_SKIP_AUTO_FINGERPRINT": "1"
+      }
+    },
+    "device": {
+      "ios": {
+        "simulator": false
+      },
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://restocommande.onrender.com",
+        "EAS_SKIP_AUTO_FINGERPRINT": "1"
+      }
+    },
+    "production": {
+      "distribution": "store",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://restocommande.onrender.com"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}
