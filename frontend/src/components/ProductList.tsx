@@ -84,9 +84,8 @@ const ProductList: React.FC = () => {
       </Box>
     );
   }
-
   return (
-    <Box sx={{ p: 2 }}>
+    <Box sx={{ p: { xs: 1, sm: 2 } }}>
       {/* Section "Articles en vedette" */}
       <Typography variant="h5" fontWeight="bold" sx={{ mb: 2 }}>
         Featured Articles
@@ -142,11 +141,10 @@ const ProductList: React.FC = () => {
             >
               <Typography variant="h5" fontWeight="bold" sx={{ mt: 4, mb: 2 }}>
                 {category.name}
-              </Typography>
-              <Grid container spacing={2}>
+              </Typography>              <Grid container spacing={{ xs: 1, sm: 2 }}>
                 {productsInCategory.map((product) => (
-                  <Grid item xs={12} sm={6} key={product._id}>
-                    <Box sx={{ minHeight: 140 }}>
+                  <Grid item xs={12} sm={6} lg={4} key={product._id}>
+                    <Box sx={{ minHeight: { xs: 120, sm: 140 } }}>
                       <ProductCard product={product} isHorizontal={true} stats={productStats[product._id]} />
                     </Box>
                   </Grid>

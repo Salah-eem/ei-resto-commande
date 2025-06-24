@@ -170,15 +170,13 @@ export class OrderService implements OnModuleInit {
     const customer = {
       name: user?.firstName ?? order.customer?.name,
       phone: user?.phone ?? order.customer?.phone,
-    };
-    const items = (order.items as any[])
+    };    const items = (order.items as any[])
       .filter((oi) => !!oi.productId)
       .map((oi) => this.mapOrderItem(oi));
 
-    const totalAmount = items.reduce(
-      (sum, it) => sum + it.price * it.quantity,
-      0,
-    );
+    // Utiliser le totalAmount stocké en base plutôt que de le recalculer ici
+    // car le calcul complexe avec les extras est fait dans recomputeTotalAmount
+    const totalAmount = order.totalAmount ?? 0;
 
     return {
       _id: order._id,
@@ -330,15 +328,14 @@ export class OrderService implements OnModuleInit {
     );
     const itemIds = inserted.map((it) => it._id);
 
-    // Recalculer totalAmount en tenant compte uniquement du surplus d’extras
+    // Recalculer totalAmount en tenant compte du surplus d'extras par rapport à la base
     let totalAmount = 0;
 
     for (const it of inserted) {
       // 1) Prix de base du produit pour 1 unité
       const basePrice = (it as any).price;
 
-      // 2) Somme des coûts d’extras :
-      //    Pour chaque ingrédient dans extraIngredientsSnapshot, on déduit la quantité de base s’il y en a
+      // 2) Construire une map des ingrédients de base pour déduire les quantités
       const baseMap: Record<string, number> = {};
       if (Array.isArray((it as any).baseIngredientsSnapshot)) {
         for (const b of (it as any).baseIngredientsSnapshot as any[]) {
@@ -346,7 +343,7 @@ export class OrderService implements OnModuleInit {
         }
       }
 
-      // 2.a) Parcourir extraIngredientsSnapshot et ne facturer que (qtyExtra – qtyBase)
+      // 3) Calculer le coût des extras (seulement le surplus par rapport à la base)
       let extrasCostUnitaire = 0;
       if (Array.isArray((it as any).extraIngredientsSnapshot)) {
         for (const e of (it as any).extraIngredientsSnapshot as any[]) {
@@ -355,13 +352,12 @@ export class OrderService implements OnModuleInit {
           const qtyBase = baseMap[idStr] ?? 0;
           const surplus = qtyExtra - qtyBase;
           if (surplus > 0) {
-            // unitPrice est déjà stocké dans extraIngredientsSnapshot → e.unitPrice
             extrasCostUnitaire += e.unitPrice * surplus;
           }
         }
       }
 
-      // 3) Coût total pour cet OrderItem = (prix de base + extrasCostUnitaire) × quantity du produit
+      // 4) Coût total pour cet OrderItem = (prix de base + extrasCostUnitaire) × quantity du produit
       totalAmount += (basePrice + extrasCostUnitaire) * it.quantity;
     }
 
@@ -453,6 +449,7 @@ export class OrderService implements OnModuleInit {
     const order = await this.orderModel.findById(id).populate('items').exec();
     if (!order) throw new NotFoundException('Order not found');
 
+    console.log('updateOrder', dto);
     this.checkModificationAllowed(order, dto);
 
     if (dto.items && Array.isArray(dto.items)) {
@@ -546,9 +543,7 @@ export class OrderService implements OnModuleInit {
         throw new BadRequestException('Cannot remove an item already prepared');
       }
     }
-  }
-
-  private async updateOrderItems(
+  }  private async updateOrderItems(
     dto: Partial<Order>,
     orderId: string,
   ): Promise<any[]> {
@@ -569,98 +564,198 @@ export class OrderService implements OnModuleInit {
     const existing = allIt.filter(isUpdatable);
     const fresh = allIt.filter((i) => !isUpdatable(i));
 
-    // Update existing
-    await Promise.all(
-      existing.map((it) =>
-        this.orderItemModel.findByIdAndUpdate(it._id, {
-          $set: {
-            name: it.name,
-            price: it.price,
-            quantity: it.quantity,
-            size: it.size,
-            image_url: it.image_url,
-            category: it.category,
-            baseIngredients: Array.isArray(it.baseIngredients)
-              ? it.baseIngredients.map((b: any) => ({
-                  _id: this.toObjectId(b._id),
-                  quantity: b.quantity,
-                }))
-              : [],
-            ingredients: Array.isArray(it.ingredients)
-              ? it.ingredients.map((ing: any) => ({
-                  _id: this.toObjectId(ing._id),
-                  quantity: ing.quantity,
-                }))
-              : [],
-          },
-        }),
-      ),
+    // Obtenir tous les items existants pour cette commande
+    const allExistingItems = await this.orderItemModel
+      .find({ orderId: this.toObjectId(orderId) })
+      .lean();
+
+    // Identifier les items à supprimer (ceux qui ne sont plus dans la nouvelle liste)
+    const newItemIds = existing.map((it) => it._id);
+    const itemsToDelete = allExistingItems.filter(
+      (item) => !newItemIds.includes(item._id.toString())
     );
 
-    // Insert new
-    let created: any[] = [];
-    if (fresh.length) {
-      created = await this.orderItemModel.insertMany(
-        fresh.map((i) => {
-          const mapped = this._mapItem(i);
-          return {
-            ...mapped,
-            orderId: this.toObjectId(orderId),
-            preparedQuantity: 0,
-            isPrepared: false,
-          };
-        }),
-      );
+    // Supprimer les items qui ne sont plus dans la liste
+    if (itemsToDelete.length > 0) {
+      const deleteIds = itemsToDelete.map((item) => item._id);
+      console.log(`Deleting ${deleteIds.length} items: ${deleteIds.join(', ')}`);
+      await this.orderItemModel.deleteMany({ _id: { $in: deleteIds } });
     }
 
-    // Build dto.items as array of all IDs
+    // Update existing
+    await Promise.all(
+      existing.map(async (it) => {
+        // Récupérer l'item existant pour combler les données manquantes
+        const existingItem = await this.orderItemModel.findById(it._id).lean();
+        if (!existingItem) {
+          throw new NotFoundException(`OrderItem not found: ${it._id}`);
+        } // Si productId ou category manquants, récupérer depuis le produit
+        let productData: any = null;
+        if (
+          !it.productId ||
+          !it.category ||
+          !it.name ||
+          it.price === undefined
+        ) {
+          const productId = it.productId || existingItem.productId;
+          productData = await this.orderItemModel.db
+            .collection('products')
+            .findOne({ _id: this.toObjectId(productId) });
+
+          if (!productData) {
+            throw new NotFoundException(`Product not found: ${productId}`);
+          }
+        }
+
+        // Construire l'objet de mise à jour avec les données existantes comme fallback
+        const updateData: any = {};
+
+        // Champs obligatoires - utiliser les nouvelles valeurs ou les existantes
+        if (it.name !== undefined) updateData.name = it.name;
+        else if (!existingItem.name && productData)
+          updateData.name = productData.name;
+
+        if (it.price !== undefined) updateData.price = it.price;
+        else if (existingItem.price === undefined && productData) {
+          updateData.price =
+            productData.productType === 'multiple_sizes' && it.size
+              ? ((productData.sizes || []).find((s: any) => s.name === it.size)
+                  ?.price ?? 0)
+              : (productData.basePrice ?? 0);
+        }
+
+        if (it.quantity !== undefined) updateData.quantity = it.quantity;
+
+        if (it.productId !== undefined)
+          updateData.productId = this.toObjectId(it.productId);
+
+        // Catégorie - construire si manquante
+        if (it.category !== undefined) {
+          updateData.category = it.category;
+        } else if (!existingItem.category && productData) {
+          // Récupérer la catégorie du produit
+          const categoryData = await this.orderItemModel.db
+            .collection('categories')
+            .findOne({ _id: productData.category });
+
+          if (categoryData) {
+            updateData.category = {
+              _id: categoryData._id,
+              name: categoryData.name,
+              idx: categoryData.idx || 0,
+            };
+          }
+        }
+
+        // Champs optionnels
+        if (it.size !== undefined) updateData.size = it.size;
+        if (it.image_url !== undefined) updateData.image_url = it.image_url;        // Ingrédients - traiter les snapshots comme dans _mapItem
+        if (Array.isArray(it.baseIngredients)) {
+          const baseSnapshots: any[] = [];
+          for (const b of it.baseIngredients) {
+            const ingDoc = await this.orderItemModel.db
+              .collection('ingredients')
+              .findOne({ _id: this.toObjectId(b._id) });
+            if (ingDoc) {
+              baseSnapshots.push({
+                _id: ingDoc._id,
+                name: ingDoc.name,
+                unitPrice: typeof ingDoc.price === 'number' ? ingDoc.price : 0,
+                quantity: b.quantity ?? 1,
+              });
+            }
+          }
+          updateData.baseIngredientsSnapshot = baseSnapshots;
+        }
+
+        if (Array.isArray(it.ingredients)) {
+          const extraSnapshots: any[] = [];
+          for (const ingRef of it.ingredients) {
+            let ingId, ingPrice, ingName;
+            
+            if (ingRef.ingredient) {
+              // Format avec objet ingredient imbriqué
+              ingId = ingRef.ingredient._id;
+              ingPrice = ingRef.ingredient.price;
+              ingName = ingRef.ingredient.name;
+            } else {
+              // Format simple, récupérer depuis la DB
+              ingId = ingRef._id;
+              const ingDoc = await this.orderItemModel.db
+                .collection('ingredients')
+                .findOne({ _id: this.toObjectId(ingId) });
+              if (ingDoc) {
+                ingPrice = ingDoc.price;
+                ingName = ingDoc.name;
+              }
+            }
+
+            if (ingId) {
+              extraSnapshots.push({
+                _id: this.toObjectId(ingId),
+                name: ingName || '',
+                unitPrice: typeof ingPrice === 'number' ? ingPrice : 0,
+                quantity: ingRef.quantity ?? 1,
+              });
+            }
+          }
+          updateData.extraIngredientsSnapshot = extraSnapshots;
+        }
+
+        return this.orderItemModel.findByIdAndUpdate(it._id, {
+          $set: updateData,
+        });
+      }),
+    ); // Insert new
+    let created: any[] = [];
+    if (fresh.length) {
+      const mappedFresh = await Promise.all(fresh.map((i) => this._mapItem(i)));
+      created = await this.orderItemModel.insertMany(
+        mappedFresh.map((mapped) => ({
+          ...mapped,
+          orderId: this.toObjectId(orderId),
+          preparedQuantity: 0,
+          isPrepared: false,
+        })),
+      );
+    } // Build dto.items as array of all IDs
     const existingIds = existing.map((it) => it._id);
     const newIds = created.map((it) => it._id);
     dto.items = [...existingIds, ...newIds];
 
     // Return detailed item payloads for stock logic
-    return [
-      ...existing.map((it: any) => ({
-        _id: it._id,
-        productId: it.productId,
-        name: it.name,
-        price: it.price,
-        quantity: it.quantity,
-        size: it.size,
-        image_url: it.image_url,
-        category: it.category,
-        baseIngredients: Array.isArray(it.baseIngredients)
-          ? it.baseIngredients.map((b: any) => ({
-              _id: (b._id as Types.ObjectId).toString(),
-              quantity: b.quantity,
-            }))
-          : [],
-        ingredients: Array.isArray(it.ingredients)
-          ? it.ingredients.map((e: any) => ({
-              _id: (e._id as Types.ObjectId).toString(),
-              quantity: e.quantity,
-            }))
-          : [],
-      })),
-      ...created.map((it: any) => ({
-        _id: it._id,
-        productId: it.productId,
-        name: it.name,
-        price: it.price,
-        quantity: it.quantity,
-        size: it.size,
-        image_url: it.image_url,
-        category: it.category,
-        baseIngredients: (it.baseIngredients as any[]).map((b: any) => ({
-          _id: (b._id as Types.ObjectId).toString(),
-          quantity: b.quantity,
-        })),
-        ingredients: (it.ingredients as any[]).map((e: any) => ({
-          _id: (e._id as Types.ObjectId).toString(),
-          quantity: e.quantity,
-        })),
-      })),
-    ];
+    // Récupérer les items mis à jour depuis la DB pour avoir les données complètes
+    const allItemIds = [...existingIds, ...newIds];
+    const updatedItems = await this.orderItemModel
+      .find({
+        _id: { $in: allItemIds },
+      })
+      .lean();
+
+    console.log(`Updated order items: ${allItemIds.length} items remaining after update`);
+
+    return updatedItems.map((it: any) => ({
+      _id: it._id,
+      productId: it.productId,
+      name: it.name,
+      price: it.price,
+      quantity: it.quantity,
+      size: it.size,
+      image_url: it.image_url,
+      category: it.category,
+      baseIngredients: Array.isArray(it.baseIngredients)
+        ? it.baseIngredients.map((b: any) => ({
+            _id: (b._id as Types.ObjectId).toString(),
+            quantity: b.quantity,
+          }))
+        : [],
+      ingredients: Array.isArray(it.ingredients)
+        ? it.ingredients.map((e: any) => ({
+            _id: (e._id as Types.ObjectId).toString(),
+            quantity: e.quantity,
+          }))
+        : [],
+    }));
   }
 
   private async updateProductStocks(oldItems: any[], newItems: any[]) {
@@ -694,38 +789,77 @@ export class OrderService implements OnModuleInit {
         }
       }),
     );
-  }
-
-  private async recomputeTotalAmount(id: string, dto: Partial<Order>) {
+  }  private async recomputeTotalAmount(id: string, dto: Partial<Order>) {
     const ord = await this.orderModel.findById(id).exec();
     if (!ord) throw new NotFoundException('Order not found after update');
 
-    // On lit tous les OrderItem liés, sans repopulate
+    // On lit tous les OrderItem liés qui existent réellement
     const items = await this.orderItemModel
       .find({ orderId: this.toObjectId(id) })
       .lean();
 
+    console.log(`Recomputing total for order ${id}, found ${items.length} items`);
+
     let total = 0;
     for (const it of items) {
-      const baseCost = (it as any).price * (it as any).quantity;
-      const extrasCost = ((it as any).ingredientsSnapshot as any[]).reduce(
-        (sum, snap) => sum + snap.unitPrice * snap.quantity,
-        0,
-      );
-      total += ((it as any).price + extrasCost) * (it as any).quantity;
+      // 1) Prix de base du produit pour 1 unité
+      const basePrice = (it as any).price;
+
+      // 2) Construire une map des ingrédients de base pour déduire les quantités
+      const baseMap: Record<string, number> = {};
+      if (Array.isArray((it as any).baseIngredientsSnapshot)) {
+        for (const b of (it as any).baseIngredientsSnapshot as any[]) {
+          baseMap[(b._id as Types.ObjectId).toString()] = b.quantity;
+        }
+      }      // 3) Calculer le coût des extras (seulement le surplus par rapport à la base)
+      let extrasCostUnitaire = 0;
+      
+      // 3.a) Utiliser extraIngredientsSnapshot qui contient les prix corrects
+      if (Array.isArray((it as any).extraIngredientsSnapshot)) {
+        for (const e of (it as any).extraIngredientsSnapshot as any[]) {
+          const idStr = (e._id as Types.ObjectId).toString();
+          const qtyExtra = e.quantity;
+          const qtyBase = baseMap[idStr] ?? 0;
+          const surplus = qtyExtra - qtyBase;
+          if (surplus > 0) {
+            extrasCostUnitaire += e.unitPrice * surplus;
+          }
+        }
+      }
+
+      // 4) Coût total pour cet OrderItem = (prix de base + extrasCostUnitaire) × quantity du produit
+      const itemTotal = (basePrice + extrasCostUnitaire) * (it as any).quantity;
+      total += itemTotal;
+      
+      console.log(`Item ${it._id}: basePrice=${basePrice}, extrasCost=${extrasCostUnitaire}, quantity=${(it as any).quantity}, itemTotal=${itemTotal}`);
     }
 
     const type = dto.orderType ?? ord.orderType;
     if (type === OrderType.DELIVERY) {
       const rest = this.restaurantService.getRestaurant();
-      if (rest?.deliveryFee != null) total += rest.deliveryFee;
+      if (rest?.deliveryFee != null) {
+        total += rest.deliveryFee;
+        console.log(`Added delivery fee: ${rest.deliveryFee}`);
+      }
     }
 
+    // Mettre à jour également le tableau items de l'Order pour qu'il ne contienne que les IDs existants
+    const existingItemIds = items.map(item => item._id);
+    
     await this.orderModel
-      .findByIdAndUpdate(id, { totalAmount: total }, { new: true })
+      .findByIdAndUpdate(
+        id, 
+        { 
+          totalAmount: total,
+          items: existingItemIds
+        }, 
+        { new: true }
+      )
       .orFail(
         () => new NotFoundException('Order not found after total update'),
       );
+
+    console.log(`Recomputed total for order ${id}: ${total} (${items.length} items)`);
   }
 
   async updatePosition(
@@ -733,10 +867,14 @@ export class OrderService implements OnModuleInit {
     pos: { lat: number; lng: number },
   ): Promise<Order> {
     const updated = await this.orderModel
-      .findByIdAndUpdate(id, 
-        { lastDeliveryPosition: pos, 
-          $push: { positionHistory: { ...pos, timestamp: new Date() } } }, 
-          { new: true })
+      .findByIdAndUpdate(
+        id,
+        {
+          lastDeliveryPosition: pos,
+          $push: { positionHistory: { ...pos, timestamp: new Date() } },
+        },
+        { new: true },
+      )
       .orFail(() => new NotFoundException('Order not found'));
     this.deliveryGateway.emitPositionUpdate(id, pos.lat, pos.lng);
     return updated;
@@ -776,7 +914,7 @@ export class OrderService implements OnModuleInit {
   async updateOrderStatus(
     orderId: string,
     status: OrderStatus,
-    loggedUserId = null
+    loggedUserId = null,
   ): Promise<Order> {
     // 1) Met à jour le statut et récupère la commande mise à jour
     let updatedOrder = await this.orderModel
@@ -816,7 +954,10 @@ export class OrderService implements OnModuleInit {
       const user = await this.userModel.findById(updatedOrder.userId).lean();
       const toEmail = user?.email;
       if (toEmail) {
-        if (status === OrderStatus.PICKED_UP || status === OrderStatus.DELIVERED) {
+        if (
+          status === OrderStatus.PICKED_UP ||
+          status === OrderStatus.DELIVERED
+        ) {
           // Fire & forget
           this.mailService
             .sendOrderReceipt(toEmail, updatedOrder)
@@ -917,10 +1058,8 @@ export class OrderService implements OnModuleInit {
           quantity: b.quantity ?? 1,
         });
       }
-    }
-
-    // 3) Copier TOUT item.ingredients (brut) dans extraIngredientsSnapshot
-    //    sans retrancher quoi que ce soit à baseSnapshots.
+    }    // 3) Traiter les ingrédients extras depuis item.ingredients
+    //    En tenant compte de la structure avec ingredient.price
     const extraSnapshots: {
       _id: Types.ObjectId;
       name: string;
@@ -929,22 +1068,42 @@ export class OrderService implements OnModuleInit {
     }[] = [];
     if (Array.isArray(item.ingredients)) {
       for (const ingRef of item.ingredients as any[]) {
-        const ingDoc = await this.orderItemModel.db
-          .collection('ingredients')
-          .findOne({ _id: this.toObjectId(ingRef._id) });
-        if (!ingDoc) {
-          throw new NotFoundException(
-            `Extra ingredient not found: ${ingRef._id}`,
-          );
-        }
-        extraSnapshots.push({
-          _id: ingDoc._id,
-          name: ingDoc.name,
-          unitPrice: typeof ingDoc.price === 'number' ? ingDoc.price : 0,
+        // Le frontend peut envoyer soit:
+        // - {_id: "...", ingredient: {_id: "...", name: "...", price: ...}, quantity: ...}
+        // - {_id: "...", quantity: ...} (format simple)
+        
+        let ingId, ingPrice, ingName;
+        
+        if (ingRef.ingredient) {
+          // Format avec objet ingredient imbriqué
+          ingId = ingRef.ingredient._id;
+          ingPrice = ingRef.ingredient.price;
+          ingName = ingRef.ingredient.name;
+        } else {
+          // Format simple, récupérer depuis la DB
+          ingId = ingRef._id;
+          const ingDoc = await this.orderItemModel.db
+            .collection('ingredients')
+            .findOne({ _id: this.toObjectId(ingId) });
+          if (!ingDoc) {
+            throw new NotFoundException(
+              `Extra ingredient not found: ${ingId}`,
+            );
+          }
+          ingPrice = ingDoc.price;
+          ingName = ingDoc.name;
+        }        extraSnapshots.push({
+          _id: this.toObjectId(ingId),
+          name: ingName || '',
+          unitPrice: typeof ingPrice === 'number' ? ingPrice : 0,
           quantity: ingRef.quantity ?? 1,
         });
+        
+        console.log(`Added extra ingredient to snapshot: ${ingName}, price=${typeof ingPrice === 'number' ? ingPrice : 0}, qty=${ingRef.quantity ?? 1}`);
       }
     }
+
+    console.log(`_mapItem: Product ${productName}, basePrice=${productPrice}, baseIngredients=${baseSnapshots.length}, extraIngredients=${extraSnapshots.length}`);
 
     // 4) On renvoie l’objet partiel pour insertMany
     return {
@@ -1036,19 +1195,25 @@ export class OrderService implements OnModuleInit {
   @Cron(CronExpression.EVERY_MINUTE, { name: 'promotePreparedOrders' })
   async promotePreparedOrdersCron() {
     const tenMinutesAgo = new Date(Date.now() - 1 * 60 * 1000);
-    const preparedOrders = await this.orderModel.find({
-      orderStatus: OrderStatus.PREPARED,
-      updatedAt: { $lte: tenMinutesAgo },
-    }).lean();
+    const preparedOrders = await this.orderModel
+      .find({
+        orderStatus: OrderStatus.PREPARED,
+        updatedAt: { $lte: tenMinutesAgo },
+      })
+      .lean();
     if (!preparedOrders.length) return;
     const bulk = this.orderModel.collection.initializeUnorderedBulkOp();
     let changed = false;
     for (const order of preparedOrders) {
       if (order.orderType === OrderType.PICKUP) {
-        bulk.find({ _id: order._id }).updateOne({ $set: { orderStatus: OrderStatus.READY_FOR_PICKUP } });
+        bulk
+          .find({ _id: order._id })
+          .updateOne({ $set: { orderStatus: OrderStatus.READY_FOR_PICKUP } });
         changed = true;
       } else if (order.orderType === OrderType.DELIVERY) {
-        bulk.find({ _id: order._id }).updateOne({ $set: { orderStatus: OrderStatus.READY_FOR_DELIVERY } });
+        bulk
+          .find({ _id: order._id })
+          .updateOne({ $set: { orderStatus: OrderStatus.READY_FOR_DELIVERY } });
         changed = true;
       }
     }
@@ -1102,7 +1267,10 @@ export class OrderService implements OnModuleInit {
   }
 
   // Assign a delivery driver to an order
-  async assignDeliveryDriver(driverId: string, orderId: string): Promise<Order> {
+  async assignDeliveryDriver(
+    driverId: string,
+    orderId: string,
+  ): Promise<Order> {
     const updatedOrder = await this.orderModel
       .findByIdAndUpdate(orderId, { deliveryDriver: driverId }, { new: true })
       .populate({
@@ -1128,7 +1296,8 @@ export class OrderService implements OnModuleInit {
       .lean();
 
     return raw.map((o) => this.mapOrder(o));
-  }  async getQuickStats(userId?: string): Promise<{
+  }
+  async getQuickStats(userId?: string): Promise<{
     todayOrders: number;
     activeDeliveries: number;
     totalRevenue: number;
@@ -1140,7 +1309,7 @@ export class OrderService implements OnModuleInit {
     avgOrderValue: number;
     onTimeDeliveryRate: number;
   }> {
-    try {      
+    try {
       const today = new Date();
       const startOfToday = startOfDay(today);
       const endOfToday = endOfDay(today);
@@ -1152,7 +1321,7 @@ export class OrderService implements OnModuleInit {
       // Build base filters - if userId is provided, filter for that specific driver
       const baseFilter: any = {};
       const todayFilter: any = {
-        createdAt: { $gte: startOfToday, $lte: endOfToday }
+        createdAt: { $gte: startOfToday, $lte: endOfToday },
       };
 
       // If userId is provided, filter for driver-specific stats
@@ -1166,9 +1335,9 @@ export class OrderService implements OnModuleInit {
 
       // Debug: Check total orders in database
       const totalOrdersCount = await this.orderModel.countDocuments();
-      console.log('Total orders in database:', totalOrdersCount);      // Debug: Check orders for today without driver filter
+      console.log('Total orders in database:', totalOrdersCount); // Debug: Check orders for today without driver filter
       const todayOrdersGlobal = await this.orderModel.countDocuments({
-        createdAt: { $gte: startOfToday, $lte: endOfToday }
+        createdAt: { $gte: startOfToday, $lte: endOfToday },
       });
       console.log('Today orders (global):', todayOrdersGlobal);
 
@@ -1184,107 +1353,111 @@ export class OrderService implements OnModuleInit {
         activeDeliveriesCount,
         todayOrders,
         deliveryOrders,
-        completedDeliveries
+        completedDeliveries,
       ] = await Promise.all([
         // Total orders today
         this.orderModel.countDocuments(todayFilter),
-        
+
         // Active deliveries (out for delivery or ready for delivery)
         this.orderModel.countDocuments({
           ...baseFilter,
-          orderStatus: { 
-            $in: [OrderStatus.OUT_FOR_DELIVERY, OrderStatus.READY_FOR_DELIVERY] 
-          }
-        }),        // Today's orders with details for calculations
+          orderStatus: {
+            $in: [OrderStatus.OUT_FOR_DELIVERY, OrderStatus.READY_FOR_DELIVERY],
+          },
+        }), // Today's orders with details for calculations
         this.orderModel
           .find(todayFilter)
-          .select('totalAmount orderStatus createdAt updatedAt orderType positionHistory')
+          .select(
+            'totalAmount orderStatus createdAt updatedAt orderType positionHistory',
+          )
           .lean(),
-        
+
         // Current delivery orders
         this.orderModel
           .find({
             ...baseFilter,
             orderType: OrderType.DELIVERY,
-            orderStatus: { 
+            orderStatus: {
               $in: [
-                OrderStatus.READY_FOR_DELIVERY, 
+                OrderStatus.READY_FOR_DELIVERY,
                 OrderStatus.OUT_FOR_DELIVERY,
                 OrderStatus.IN_PREPARATION,
-                OrderStatus.PREPARED
-              ] 
-            }
+                OrderStatus.PREPARED,
+              ],
+            },
           })
           .select('orderStatus')
           .lean(),
-          // Completed deliveries today for time analysis
+        // Completed deliveries today for time analysis
         this.orderModel
           .find({
             ...todayFilter,
             orderStatus: OrderStatus.DELIVERED,
-            orderType: OrderType.DELIVERY
+            orderType: OrderType.DELIVERY,
           })
           .select('createdAt updatedAt positionHistory')
-          .lean()
+          .lean(),
       ]);
 
       // Calculate total revenue for today
       const totalRevenue = todayOrders.reduce(
-        (sum, order) => sum + (order.totalAmount || 0), 
-        0
+        (sum, order) => sum + (order.totalAmount || 0),
+        0,
       );
 
       // Calculate delivered orders today
       const deliveredToday = todayOrders.filter(
-        order => order.orderStatus === OrderStatus.DELIVERED
+        (order) => order.orderStatus === OrderStatus.DELIVERED,
       ).length;
 
       // Calculate completion rate (delivered vs total orders today)
-      const completionRate = todayOrdersCount > 0 
-        ? (deliveredToday / todayOrdersCount) * 100 
-        : 0;
+      const completionRate =
+        todayOrdersCount > 0 ? (deliveredToday / todayOrdersCount) * 100 : 0;
 
       // Calculate average order value
-      const avgOrderValue = todayOrdersCount > 0 
-        ? totalRevenue / todayOrdersCount 
-        : 0;
+      const avgOrderValue =
+        todayOrdersCount > 0 ? totalRevenue / todayOrdersCount : 0;
 
       // Calculate average delivery time
       let averageDeliveryTime = 0;
       let onTimeDeliveries = 0;
-        if (completedDeliveries.length > 0) {
+      if (completedDeliveries.length > 0) {
         const deliveryTimes = completedDeliveries
-          .map(order => {
+          .map((order) => {
             const createdAt = new Date(order.createdAt);
             const deliveredAt = new Date((order as any).updatedAt);
-            const deliveryTime = (deliveredAt.getTime() - createdAt.getTime()) / (1000 * 60); // in minutes
-            
+            const deliveryTime =
+              (deliveredAt.getTime() - createdAt.getTime()) / (1000 * 60); // in minutes
+
             // Count on-time deliveries (within 45 minutes)
             if (deliveryTime <= 45) {
               onTimeDeliveries++;
             }
-            
+
             return deliveryTime;
           })
-          .filter(time => time > 0 && time < 300); // Filter out invalid times (> 5 hours)
+          .filter((time) => time > 0 && time < 300); // Filter out invalid times (> 5 hours)
 
         if (deliveryTimes.length > 0) {
-          averageDeliveryTime = deliveryTimes.reduce((sum, time) => sum + time, 0) / deliveryTimes.length;
+          averageDeliveryTime =
+            deliveryTimes.reduce((sum, time) => sum + time, 0) /
+            deliveryTimes.length;
         }
       }
 
       // Calculate on-time delivery rate
-      const onTimeDeliveryRate = completedDeliveries.length > 0 
-        ? (onTimeDeliveries / completedDeliveries.length) * 100 
-        : 0;
+      const onTimeDeliveryRate =
+        completedDeliveries.length > 0
+          ? (onTimeDeliveries / completedDeliveries.length) * 100
+          : 0;
 
       // Count pending and in-progress orders
       const pendingOrders = deliveryOrders.filter(
-        order => order.orderStatus === OrderStatus.READY_FOR_DELIVERY
+        (order) => order.orderStatus === OrderStatus.READY_FOR_DELIVERY,
       ).length;
 
       const inProgressOrders = deliveryOrders.filter(
-        order => order.orderStatus === OrderStatus.OUT_FOR_DELIVERY
+        (order) => order.orderStatus === OrderStatus.OUT_FOR_DELIVERY,
       ).length;
 
       const quickStats = {
@@ -1302,11 +1475,9 @@ export class OrderService implements OnModuleInit {
 
       console.log('Quick stats calculated:', quickStats);
       return quickStats;
-
     } catch (error) {
       console.error('Error calculating quick stats:', error);
       throw new BadRequestException('Failed to calculate quick statistics');
     }
   }
-
 }

@@ -343,10 +343,9 @@ const MenuManager: React.FC = () => {
       showSnackbar(e?.response?.data?.message || "Error deleting ingredient", 'error');
     }
   };
-
   if (loadingProducts || loadingCategories || loadingIngredients) {
     return (
-      <Box sx={{ maxWidth: 900, mx: "auto", py: 4 }}>
+      <Box sx={{ maxWidth: { xs: "100%", sm: 900 }, mx: "auto", py: 4, px: { xs: 2, sm: 0 } }}>
         <CircularProgress />
       </Box>
     );
@@ -354,7 +353,7 @@ const MenuManager: React.FC = () => {
 
   return (
     <ProtectRoute allowedRoles={[Role.Admin]}>
-      <Box sx={{ maxWidth: 900, mx: "auto", py: 4 }}>
+      <Box sx={{ maxWidth: { xs: "100%", sm: 900 }, mx: "auto", py: 4, px: { xs: 2, sm: 0 } }}>
         <Typography variant="h4" fontWeight={700} mb={3}>Menu Management</Typography>
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
         <Paper sx={{ p: 3, borderRadius: 3 }}>
@@ -364,21 +363,20 @@ const MenuManager: React.FC = () => {
             <Tab label="Ingredients" />
           </Tabs>
           {tab === 0 && (
-            <Box>
-              <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Box>              <Box sx={{ mb: 2, display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, alignItems: { xs: 'stretch', sm: 'center' }, gap: 2 }}>
                 <Button startIcon={<AddIcon />} variant="contained" onClick={() => {
                   const maxIdx = categories.length > 0 ? Math.max(...categories.map(c => c.idx)) : 0;
                   setCatEdit(null);
                   setCatName("");
                   setCatIdx(maxIdx + 1);
                   setCatDialogOpen(true);
-                }}>Add Category</Button>
+                }} sx={{ minWidth: { xs: '100%', sm: 'auto' } }}>Add Category</Button>
                 <TextField
                   label="Filter categories"
                   value={categoryFilter}
                   onChange={e => setCategoryFilter(e.target.value)}
                   size="small"
-                  sx={{ minWidth: 220 }}
+                  sx={{ minWidth: { xs: '100%', sm: 220 } }}
                 />
               </Box>
               {categories.length === 0 && <Typography>No categories.</Typography>}

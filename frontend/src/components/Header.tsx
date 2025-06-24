@@ -231,7 +231,7 @@ const Header = () => {
 
       {/* Drawer: add all actions for mobile */}
       <Drawer anchor="left" open={isSidebarOpen} onClose={handleSidebarClose}>
-        <Box sx={{ width: 250, p: 2 }}>
+        <Box sx={{ width: { xs: 280, sm: 320 }, p: { xs: 1, sm: 2 } }}>
           <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2, mt: 10 }}>
             <Typography variant="h6" sx={{ color: "#008f68", fontWeight: "bold", fontSize: { xs: "1rem", sm: "1.25rem" } }}>
               {userProfile ? `Hello, ${userProfile.firstName}` : "Hello"}

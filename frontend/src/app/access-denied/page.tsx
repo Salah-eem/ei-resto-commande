@@ -29,7 +29,7 @@ export default function AccessDeniedPage() {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', textAlign: 'center' }}>
-      <Paper elevation={3} sx={{ p: 4, maxWidth: 400 }}>
+      <Paper elevation={3} sx={{ p: { xs: 3, sm: 4 }, maxWidth: { xs: "90%", sm: 400 }, textAlign: "center" }}>
         <Typography variant="h4" color="error" gutterBottom>
           Access Denied
         </Typography>

@@ -13,10 +13,15 @@ const HomePage = () => {
   useEffect(() => {
     dispatch(fetchProducts() as any);
   }, [dispatch]);
-
   if (loading) {
     return (
-      <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100vh" }}>
+      <Box sx={{ 
+        display: "flex", 
+        justifyContent: "center", 
+        alignItems: "center", 
+        height: { xs: "50vh", sm: "100vh" },
+        px: { xs: 2, sm: 0 }
+      }}>
         <CircularProgress />
       </Box>
     );
@@ -24,14 +29,19 @@ const HomePage = () => {
 
   if (error) {
     return (
-      <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100vh" }}>
+      <Box sx={{ 
+        display: "flex", 
+        justifyContent: "center", 
+        alignItems: "center", 
+        height: { xs: "50vh", sm: "100vh" },
+        px: { xs: 2, sm: 0 }
+      }}>
         <Alert severity="error">{error}</Alert>
       </Box>
     );
   }
-
   return (
-    <Box sx={{ p: 2 }}>
+    <Box sx={{ p: { xs: 1, sm: 2 } }}>
       <ProductList />
     </Box>
   );

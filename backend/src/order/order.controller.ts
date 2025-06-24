@@ -123,6 +123,7 @@ export class OrderController {
     @Roles(Role.Admin, Role.Employee)
     @Put(':id')
     async updateOrder(@Param('id') id: string, @Body() orderData: Partial<Order>) {
+      console.log('updateOrder controller', orderData);
       return this.orderService.updateOrder(id, orderData);
     }
 
