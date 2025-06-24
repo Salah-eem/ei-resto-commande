@@ -55,6 +55,21 @@ export const updateCategory = createAsyncThunk(
   }
 );
 
+// 📌 Mettre à jour l'ordre des catégories
+export const updateCategoryOrder = createAsyncThunk(
+  "categories/updateCategoryOrder",
+  async (updates: { _id: string; idx: number }[], { rejectWithValue }) => {
+    try {
+      const response = await api.post("/category/reorder", { updates });
+      return response.data;
+    } catch (error: any) {
+      return rejectWithValue(
+        error.response?.data || "Failed to update categories order"
+      );
+    }
+  }
+);
+
 // 📌 Supprimer une catégorie
 export const deleteCategory = createAsyncThunk(
   "categories/deleteCategory",
@@ -111,6 +126,18 @@ const categorySlice = createSlice({
         }
       })
       .addCase(updateCategory.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      })
+      .addCase(updateCategoryOrder.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(updateCategoryOrder.fulfilled, (state, action) => {
+        state.loading = false;
+        state.items = action.payload;
+      })
+      .addCase(updateCategoryOrder.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload as string;
       })
