@@ -54,6 +54,13 @@ const ProductList: React.FC = () => {
         } else {
           setFeaturedProducts(products.slice(0, 7)); // fallback
         }
+        if (featuredProducts.length < 7) {
+          // Si moins de 7 produits, on complète avec les premiers produits pour atteindre 7
+          const additionalProducts = products.filter(
+            (product) => !featuredProducts.some((p) => p._id === product._id)
+          );
+          setFeaturedProducts((prev) => [...prev, ...additionalProducts.slice(0, 7 - prev.length)]);
+        }
       } catch {
         setFeaturedProducts(products.slice(0, 7)); // fallback
       }

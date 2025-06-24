@@ -3,6 +3,7 @@ import { createSlice, createAsyncThunk, PayloadAction } from "@reduxjs/toolkit";
 import api from "@/lib/api";
 import { User } from "@/types/user";
 import { getUserId } from "@/utils/user.utils";
+import { logout } from "./authSlice";
 
 interface UserState {
   userId: string | null;
@@ -243,8 +244,7 @@ const userSlice = createSlice({
     });
     builder.addCase(deleteUserById.fulfilled, (state, action: PayloadAction<string>) => {
       state.loading = false;
-      state.users = state.users ? state.users.filter((user) => user._id !== action.payload) : null;
-    });
+      state.users = state.users ? state.users.filter((user) => user._id !== action.payload) : null;    });
     builder.addCase(deleteUserById.rejected, (state, action) => {
       state.loading = false;
       const payload = action.payload as any;
@@ -255,6 +255,18 @@ const userSlice = createSlice({
       } else {
         state.error = typeof payload === 'string' ? payload : payload?.message || "Unknown error";
       }
+    })
+    // Écouter l'action logout depuis authSlice pour nettoyer les données utilisateur
+    .addCase(logout, (state) => {
+      // Supprimer les données utilisateur du localStorage
+      localStorage.removeItem("user_id");
+      // Générer un nouveau guestId et le stocker
+      const newGuestId = getUserId();
+      state.userId = newGuestId;
+      state.profile = null;
+      state.users = null;
+      state.loading = false;
+      state.error = null;
     });
   },
 });
