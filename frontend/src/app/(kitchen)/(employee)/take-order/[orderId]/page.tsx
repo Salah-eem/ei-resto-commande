@@ -26,7 +26,13 @@ import {
   Stack,
   Divider,
 } from "@mui/material";
-import { Remove, ShoppingCart, ArrowBackIosNew } from "@mui/icons-material";
+import {
+  Remove as RemoveIcon,
+  ShoppingCart,
+  ArrowBackIosNew,
+  Delete as DeleteIcon,
+  Add as AddIcon,
+} from "@mui/icons-material";
 import { Formik, Form, FieldArray } from "formik";
 import * as Yup from "yup";
 import { fetchProducts } from "@/store/slices/productSlice";
@@ -53,6 +59,7 @@ import { fetchIngredients } from "@/store/slices/ingredientSlice";
 import { IngredientWithQuantity } from "@/types/cartItem";
 
 type OrderItemForm = {
+  _id?: string; // pour l'édition
   productId: string;
   name: string;
   price: number;
@@ -180,6 +187,9 @@ const TakeOrderPage: React.FC = () => {
     type: "success" | "error";
     message: string;
   } | null>(null);
+  const [previousOrderItems, setPreviousOrderItems] = useState<OrderItemForm[]>(
+    []
+  );
 
   const productsPerPage = 6;
 
@@ -295,6 +305,7 @@ const TakeOrderPage: React.FC = () => {
             .flatMap(([id, qty]) => Array(qty).fill(id));
 
           return {
+            _id: oi._id,
             productId: oi.productId,
             name: oi.name,
             price: oi.price,
@@ -351,9 +362,51 @@ const TakeOrderPage: React.FC = () => {
         return sum + unitTotal * item.quantity;
       }, 0) + (orderType === OrderType.DELIVERY ? deliveryFee ?? 0 : 0)
     ).toFixed(2);
+  // Fonction pour gérer les changements de quantité
+  const handleQuantityChange = (
+    itemIndex: number,
+    newQuantity: number,
+    values: OrderFormValues,
+    setFieldValue: (field: string, value: any) => void
+  ) => {
+    if (newQuantity <= 0) {
+      handleRemoveItem(itemIndex, values, setFieldValue);
+    } else {
+      const updated = [...values.orderItems];
+      updated[itemIndex].quantity = newQuantity;
+      setFieldValue("orderItems", updated);
+    }
+  };
+
+  // Fonction pour supprimer un item de manière sécurisée
+  const handleRemoveItem = (
+    index: number,
+    values: OrderFormValues,
+    setFieldValue: (field: string, value: any) => void
+  ) => {
+    // Sauvegarder l'état actuel avant suppression
+    setPreviousOrderItems([...values.orderItems]);
+
+    // Supprimer l'item
+    const updatedItems = values.orderItems.filter((_, i) => i !== index);
+    setFieldValue("orderItems", updatedItems);
+  };
+
+  // Fonction pour restaurer les items précédents
+  const restorePreviousItems = (
+    setFieldValue: (field: string, value: any) => void
+  ) => {
+    if (previousOrderItems.length > 0) {
+      setFieldValue("orderItems", previousOrderItems);
+      setPreviousOrderItems([]);
+    }
+  };
 
   // Soumission du formulaire
-  const handleSubmit = async (values: OrderFormValues, { resetForm }: any) => {
+  const handleSubmit = async (
+    values: OrderFormValues,
+    { resetForm, setFieldValue }: any
+  ) => {
     setIsSubmitting(true);
     try {
       const payload: Partial<Order> = {
@@ -400,6 +453,7 @@ const TakeOrderPage: React.FC = () => {
             });
 
           return {
+            _id: item._id,
             productId: item.productId,
             name: item.name,
             price: item.price,
@@ -462,13 +516,24 @@ const TakeOrderPage: React.FC = () => {
       };
       const errorMsg = getErrorMessage(result);
       if (result?.error || result?.payload?.message) {
-        setAlert({
-          type: "error",
-          message: errorMsg || "❌ An error occurred.",
-        });
+        // Si l'erreur concerne la suppression d'items préparés, restaurer l'état précédent
+        if (
+          errorMsg &&
+          errorMsg.includes("Cannot remove an item already prepared")
+        ) {
+          restorePreviousItems(setFieldValue);
+          setAlert({
+            type: "error",
+            message: "Cannot remove items that are already being prepared.",
+          });
+        } else {
+          setAlert({
+            type: "error",
+            message: errorMsg || "An error occurred.",
+          });
+        }
         return;
       }
-
       setAlert({
         type: "success",
         message: isCreateMode
@@ -477,10 +542,18 @@ const TakeOrderPage: React.FC = () => {
       });
       resetForm();
       setTab(0);
+      setPreviousOrderItems([]); // Réinitialiser l'état précédent après succès
     } catch (err: any) {
-      let errorMsg =
-        err?.response?.data?.message || err?.message || "❌ An error occurred.";
-      setAlert({ type: "error", message: errorMsg });
+      let catchErrorMsg =
+        err?.response?.data?.message || err?.message || "An error occurred.";
+
+      // Si l'erreur concerne la suppression d'items préparés, restaurer l'état précédent
+      if (catchErrorMsg.includes("Cannot remove an item already prepared")) {
+        restorePreviousItems(setFieldValue);
+        catchErrorMsg = "Cannot remove items that are already being prepared.";
+      }
+
+      setAlert({ type: "error", message: catchErrorMsg });
     } finally {
       setIsSubmitting(false);
     }
@@ -496,21 +569,29 @@ const TakeOrderPage: React.FC = () => {
       router.push("/view-orders");
     }
   };
-
   return (
     <ProtectRoute allowedRoles={[Role.Employee, Role.Admin]}>
-      <Box sx={{ p: 4 }}>
+      <Box sx={{ p: { xs: 2, sm: 4 } }}>
         <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
           <IconButton onClick={handleBack}>
             <ArrowBackIosNew />
           </IconButton>
-          <Typography variant="h4" sx={{ ml: 1 }}>
+          <Typography
+            variant="h4"
+            sx={{ ml: 1, fontSize: { xs: "1.5rem", sm: "2.125rem" } }}
+          >
             {isCreateMode ? "Take an Order" : "Order Details"}
           </Typography>
         </Box>
 
-        <Paper sx={{ mt: 3, p: 3 }}>
-          <Tabs value={tab} onChange={(_, newTab) => setTab(newTab)} centered>
+        <Paper sx={{ mt: 3, p: { xs: 2, sm: 3 } }}>
+          <Tabs
+            value={tab}
+            onChange={(_, newTab) => setTab(newTab)}
+            centered={false}
+            variant={window.innerWidth < 600 ? "scrollable" : "standard"}
+            scrollButtons="auto"
+          >
             <Tab label="Client" />
             <Tab label="Products" />
             <Tab label="Payment" />
@@ -930,7 +1011,7 @@ const TakeOrderPage: React.FC = () => {
                         >
                           <Typography variant="h6">
                             <ShoppingCart sx={{ mr: 1 }} /> Selected Products
-                          </Typography>
+                          </Typography>{" "}
                           {values.orderItems.length === 0 ? (
                             <Typography>No products selected</Typography>
                           ) : (
@@ -952,7 +1033,8 @@ const TakeOrderPage: React.FC = () => {
                                         alignItems="center"
                                         spacing={1}
                                       >
-                                        <Grid item xs={8}>
+                                        {" "}
+                                        <Grid item xs={6}>
                                           <Typography>{item.name}</Typography>
                                           {/* Calculer le coût des extras */}
                                           {(() => {
@@ -978,7 +1060,6 @@ const TakeOrderPage: React.FC = () => {
                                               </Typography>
                                             );
                                           })()}
-
                                           {/* Affichage des modifications déjà enregistrées */}
                                           <Box sx={{ mt: 0.5, pl: 1 }}>
                                             {item.removedBaseIds.length > 0 && (
@@ -1052,35 +1133,112 @@ const TakeOrderPage: React.FC = () => {
                                                 })()}
                                               </Typography>
                                             )}
-                                          </Box>
-                                        </Grid>
-                                        <Grid item xs={3}>
-                                          <TextField
-                                            type="number"
-                                            size="small"
-                                            value={item.quantity}
-                                            onChange={(e) => {
-                                              const updated = [
-                                                ...values.orderItems,
-                                              ];
-                                              updated[idx].quantity = parseInt(
-                                                e.target.value,
-                                                10
-                                              );
-                                              setFieldValue(
-                                                "orderItems",
-                                                updated
-                                              );
-                                            }}
-                                          />
-                                        </Grid>
-                                        <Grid item xs={1}>
-                                          <IconButton
-                                            color="error"
-                                            onClick={() => remove(idx)}
+                                          </Box>{" "}
+                                        </Grid>{" "}
+                                        <Grid item xs={5}>
+                                          <Stack
+                                            direction="row"
+                                            spacing={0.5}
+                                            alignItems="center"
                                           >
-                                            <Remove />
-                                          </IconButton>
+                                            {/* - Button */}
+                                            <IconButton
+                                              size="small"
+                                              onClick={() =>
+                                                handleQuantityChange(
+                                                  idx,
+                                                  item.quantity - 1,
+                                                  values,
+                                                  setFieldValue
+                                                )
+                                              }
+                                              disabled={item.quantity <= 1}
+                                              sx={{
+                                                width: 32,
+                                                height: 32,
+                                                border: "1px solid #d0d0d0",
+                                                borderRadius: 2,
+                                                bgcolor: "#f7f7f7",
+                                                "&:hover": {
+                                                  bgcolor: "#eee",
+                                                  borderColor: "#aaa",
+                                                },
+                                              }}
+                                            >
+                                              <RemoveIcon fontSize="small" />
+                                            </IconButton>
+
+                                            {/* Quantité (sans saisie clavier, centré, look badge) */}
+                                            <Box
+                                              sx={{
+                                                minWidth: 38,
+                                                height: 36,
+                                                display: "flex",
+                                                alignItems: "center",
+                                                justifyContent: "center",
+                                                fontWeight: 700,
+                                                fontSize: "1.12rem",
+                                                border: "1px solid #d0d0d0",
+                                                borderRadius: 2,
+                                                mx: 0.5,
+                                                bgcolor: "#fafcff",
+                                                color: "#1976d2",
+                                                letterSpacing: 1,
+                                                userSelect: "none",
+                                                pointerEvents: "none", // Désactive la sélection/saisie
+                                              }}
+                                            >
+                                              {item.quantity}
+                                            </Box>
+
+                                            {/* + Button */}
+                                            <IconButton
+                                              size="small"
+                                              onClick={() =>
+                                                handleQuantityChange(
+                                                  idx,
+                                                  item.quantity + 1,
+                                                  values,
+                                                  setFieldValue
+                                                )
+                                              }
+                                              sx={{
+                                                width: 32,
+                                                height: 32,
+                                                border: "1px solid #d0d0d0",
+                                                borderRadius: 2,
+                                                bgcolor: "#f7f7f7",
+                                                "&:hover": {
+                                                  bgcolor: "#eee",
+                                                  borderColor: "#aaa",
+                                                },
+                                              }}
+                                            >
+                                              <AddIcon fontSize="small" />
+                                            </IconButton>
+
+                                            {/* Delete */}
+                                            <IconButton
+                                              size="small"
+                                              color="error"
+                                              onClick={() =>
+                                                handleRemoveItem(
+                                                  idx,
+                                                  values,
+                                                  setFieldValue
+                                                )
+                                              }
+                                              sx={{
+                                                ml: 1,
+                                                "&:hover": {
+                                                  bgcolor:
+                                                    "rgba(211, 47, 47, 0.06)",
+                                                },
+                                              }}
+                                            >
+                                              <DeleteIcon />
+                                            </IconButton>
+                                          </Stack>
                                         </Grid>
                                       </Grid>
 
@@ -1108,7 +1266,6 @@ const TakeOrderPage: React.FC = () => {
                               )}
                             </FieldArray>
                           )}
-
                           {/* IngredientDialog sans modification du composant */}
                           {openDialogForIndex !== null && (
                             <IngredientDialog

@@ -85,11 +85,10 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isHorizontal = false
     dispatch(addToCart(cartItem) as any);
   };
 
-  return (
-    <Card
+  return (    <Card
       sx={{
-        width: isHorizontal ? '100%' : 250,
-        minHeight: isHorizontal ? 140 : 340,
+        width: isHorizontal ? '100%' : { xs: 200, sm: 250 },
+        minHeight: isHorizontal ? { xs: 120, sm: 140 } : { xs: 280, sm: 340 },
         borderRadius: 3,
         boxShadow: 4,
         display: 'flex',

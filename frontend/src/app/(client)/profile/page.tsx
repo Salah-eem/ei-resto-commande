@@ -368,20 +368,20 @@ const ProfilePage: React.FC = () => {
   }
 
   if (!profile) return null;
-
   return (
     <Box
       sx={{
         minHeight: "100vh",
         bgcolor: "linear-gradient(135deg, #e3f0ff 0%, #f6f8fa 100%)",
-        py: { xs: 4, md: 8 },
+        py: { xs: 2, sm: 4, md: 8 },
+        px: { xs: 1, sm: 2 }
       }}
     >
-      <Box sx={{ maxWidth: 440, mx: "auto", px: 2 }}>
+      <Box sx={{ maxWidth: { xs: "100%", sm: 500, md: 440 }, mx: "auto", px: { xs: 1, sm: 2 } }}>
         <Paper
           elevation={6}
           sx={{
-            p: { xs: 3, md: 5 },
+            p: { xs: 2, sm: 3, md: 5 },
             borderRadius: 5,
             textAlign: "center",
             boxShadow: "0 8px 32px 0 rgba(25, 118, 210, 0.10)",

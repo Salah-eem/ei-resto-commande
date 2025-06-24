@@ -62,6 +62,22 @@ export const updateProduct = createAsyncThunk(
   }
 );
 
+export const updateProductImage = createAsyncThunk(
+  "products/updateProductImage",
+  async ({ id, formData }: { id: string; formData: FormData }, { rejectWithValue }) => {
+    try {
+      const response = await api.put(`/product/image/${id}`, formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      });
+      return response.data;
+    } catch (error: any) {
+      return rejectWithValue(error.response?.data?.message || "Échec de la mise à jour de l'image du produit");
+    }
+  }
+);
+
 export const deleteProduct = createAsyncThunk(
   "products/deleteProduct",
   async (id: string, { rejectWithValue }) => {
@@ -128,6 +144,21 @@ const productSlice = createSlice({
         }
       })
       .addCase(updateProduct.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      })
+      .addCase(updateProductImage.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(updateProductImage.fulfilled, (state, action) => {
+        state.loading = false;
+        const index = state.items.findIndex((item) => item._id === action.payload._id);
+        if (index !== -1) {
+          state.items[index] = action.payload;
+        }
+      })
+      .addCase(updateProductImage.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload as string;
       })

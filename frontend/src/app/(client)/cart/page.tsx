@@ -303,12 +303,11 @@ const CartPage: React.FC = () => {
         {cartError}
       </Alert>
     );
-
   return (
     <Box
       sx={{
-        p: { xs: 2, md: 4 },
-        maxWidth: 1200,
+        p: { xs: 1, sm: 2, md: 4 },
+        maxWidth: { xs: "100%", lg: 1200 },
         mx: "auto",
         position: "relative",
       }}
@@ -328,8 +327,12 @@ const CartPage: React.FC = () => {
         >
           <CircularProgress />
         </Box>
-      )}
-      <Typography variant="h4" textAlign="center" gutterBottom>
+      )}      <Typography 
+        variant="h4" 
+        textAlign="center" 
+        gutterBottom
+        sx={{ fontSize: { xs: "1.5rem", sm: "2.125rem" } }}
+      >
         <ShoppingCartIcon fontSize="large" /> Your Cart
       </Typography>
 
@@ -337,10 +340,9 @@ const CartPage: React.FC = () => {
         <Typography textAlign="center" variant="h6">
           Your cart is empty.
         </Typography>
-      ) : (
-        <Grid container spacing={4}>
+      ) : (        <Grid container spacing={{ xs: 2, md: 4 }}>
           {/* Item list */}
-          <Grid item xs={12} md={7}>
+          <Grid item xs={12} lg={7}>
             <Stack spacing={2}>
               {cartItems.map((item) => {
                 let extrasUnitSum = 0;
@@ -367,20 +369,27 @@ const CartPage: React.FC = () => {
                 const lineTotal = unitPriceWithExtras * item.quantity;
                 const hasExtras = extrasUnitSum > 0;
 
-                return (
-                  <Paper
+                return (                  <Paper
                     key={item._id}
                     sx={{
                       display: "flex",
-                      alignItems: "flex-start",
-                      p: 2,
+                      flexDirection: { xs: "column", sm: "row" },
+                      alignItems: { xs: "stretch", sm: "flex-start" },
+                      p: { xs: 1.5, sm: 2 },
                       borderRadius: 2,
+                      gap: { xs: 1.5, sm: 0 }
                     }}
                   >
                     <Avatar
                       src={`${API_URL}/${item.image_url}`}
                       variant="rounded"
-                      sx={{ width: 80, height: 80, mr: 2, mt: 1 }}
+                      sx={{ 
+                        width: { xs: 60, sm: 80 }, 
+                        height: { xs: 60, sm: 80 }, 
+                        mr: { xs: 0, sm: 2 }, 
+                        mt: { xs: 0, sm: 1 },
+                        alignSelf: { xs: "center", sm: "flex-start" }
+                      }}
                     />
                     <Box sx={{ flex: 1 }}>
                       <Typography fontWeight="bold">{item.name}</Typography>
@@ -557,15 +566,12 @@ const CartPage: React.FC = () => {
                 );
               })}
             </Stack>
-          </Grid>
-
-          {/* Summary & Order Form */}
-          <Grid item xs={12} md={5}>
-            <Card
+          </Grid>          {/* Summary & Order Form */}
+          <Grid item xs={12} lg={5}>            <Card
               sx={{
-                p: 3,
+                p: { xs: 2, sm: 3 },
                 borderRadius: 2,
-                position: { md: "sticky" },
+                position: { lg: "sticky" },
                 top: 80,
               }}
             >

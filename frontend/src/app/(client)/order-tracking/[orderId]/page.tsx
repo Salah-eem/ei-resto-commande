@@ -241,7 +241,6 @@ export default function OrderTrackingPage() {
     restaurantPos && clientPos && deliveryPos
       ? L.latLngBounds([restaurantPos, clientPos, deliveryPos])
       : null;
-
   // Function to render the timeline
   const renderTimeline = () => (
     <Timeline
@@ -250,10 +249,10 @@ export default function OrderTrackingPage() {
         bgcolor: '#f9fafb',
         borderRadius: 2,
         py: 2,
-        px: 1,
+        px: { xs: 0.5, sm: 1 },
         display: 'flex',
-        flexDirection: 'row',
-        overflowX: 'auto',
+        flexDirection: { xs: 'column', sm: 'row' },
+        overflowX: { xs: 'visible', sm: 'auto' },
         mb: 3
       }}
     >
@@ -489,16 +488,19 @@ export default function OrderTrackingPage() {
       </motion.div>
     )
   );
-
   return (
-    <Box p={3} position="relative">
+    <Box p={{ xs: 2, sm: 3 }} position="relative">
       {/* Header with back button */}
       <Box display="flex" alignItems="center" mb={3}>
         <ArrowBackIcon
           onClick={() => router.back()}
           sx={{ cursor: 'pointer', mr: 1, fontSize: 28 }}
         />
-        <Typography variant="h4" fontWeight={600}>
+        <Typography 
+          variant="h4" 
+          fontWeight={600}
+          sx={{ fontSize: { xs: "1.5rem", sm: "2.125rem" } }}
+        >
           Order Tracking
         </Typography>
       </Box>
@@ -519,21 +521,22 @@ export default function OrderTrackingPage() {
 
       {/* Conditional content based on status */}
       {isDeliveryType && isOutForDelivery && renderMapContent()}
-      {(isPreparingPhase || isReadyForPickup || isReceived) && renderPreparationContent()}
-
-      {/* ETA badge */}
+      {(isPreparingPhase || isReadyForPickup || isReceived) && renderPreparationContent()}      {/* ETA badge */}
       <Paper
         elevation={4}
         sx={{
-          position: 'absolute',
-          top: 24,
-          right: 24,
+          position: { xs: 'static', sm: 'absolute' },
+          top: { xs: 'auto', sm: 24 },
+          right: { xs: 'auto', sm: 24 },
           bgcolor: 'primary.main',
           color: '#fff',
           px: 2,
           py: 1,
           borderRadius: 2,
-          zIndex: 1000
+          zIndex: 1000,
+          mb: { xs: 2, sm: 0 },
+          width: { xs: 'fit-content', sm: 'auto' },
+          mx: { xs: 'auto', sm: 0 }
         }}
       >
         <Typography variant="body2" fontWeight={600}>

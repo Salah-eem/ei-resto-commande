@@ -163,16 +163,15 @@ const ManageUsersPage = () => {
 
   return (
     <ProtectRoute allowedRoles={[Role.Admin]}>
-      <Box sx={{ maxWidth: 900, mx: "auto", mt: 4 }}>
+      <Box sx={{ maxWidth: { xs: "100%", sm: 900 }, mx: "auto", mt: 4, px: { xs: 2, sm: 0 } }}>
         <Typography variant="h4" fontWeight={700} mb={3}>
           User Management
-        </Typography>
-        <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
+        </Typography>        <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, alignItems: { xs: "stretch", sm: "center" }, gap: 2, mb: 2 }}>
           <Button
             variant="contained"
             startIcon={<AddIcon />}
             onClick={handleAdd}
-            sx={{ mr: 2 }}
+            sx={{ minWidth: { xs: "100%", sm: "auto" } }}
           >
             Add User
           </Button>
@@ -205,9 +204,8 @@ const ManageUsersPage = () => {
           </Box>
         ) : error ? (
           <Typography color="error">{error}</Typography>
-        ) : (
-          <TableContainer component={Paper}>
-            <Table>
+        ) : (          <TableContainer component={Paper} sx={{ overflowX: "auto" }}>
+            <Table sx={{ minWidth: { xs: 650, sm: 750 } }}>
               <TableHead>
                 <TableRow>
                   <TableCell
@@ -242,10 +240,9 @@ const ManageUsersPage = () => {
                         ? "▲"
                         : "▼"
                       : ""}
-                  </TableCell>
-                  <TableCell
+                  </TableCell>                  <TableCell
                     onClick={() => handleSort("phone")}
-                    sx={{ cursor: "pointer", fontWeight: "bold" }}
+                    sx={{ cursor: "pointer", fontWeight: "bold", display: { xs: "none", sm: "table-cell" } }}
                   >
                     Phone{" "}
                     {sortBy === "phone"
@@ -272,7 +269,7 @@ const ManageUsersPage = () => {
                     <TableCell>{user.firstName}</TableCell>
                     <TableCell>{user.lastName}</TableCell>
                     <TableCell>{user.email}</TableCell>
-                    <TableCell>{user.phone}</TableCell>
+                    <TableCell sx={{ display: { xs: "none", sm: "table-cell" } }}>{user.phone}</TableCell>
                     <TableCell>
                       <Chip
                         label={roleLabels[user.role]}

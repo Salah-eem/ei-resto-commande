@@ -115,10 +115,8 @@ export default function DashboardPage() {
         </Typography>
         <Typography variant="subtitle1" color="text.secondary" mb={3}>
           Key statistics in real time
-        </Typography>
-
-        {/* Metric selector */}
-        <FormControl sx={{ mb: 4, minWidth: 220 }}>
+        </Typography>        {/* Metric selector */}
+        <FormControl sx={{ mb: 4, minWidth: { xs: '100%', sm: 220 } }}>
           <InputLabel id="metric-select-label">Statistic</InputLabel>
           <Select
             labelId="metric-select-label"

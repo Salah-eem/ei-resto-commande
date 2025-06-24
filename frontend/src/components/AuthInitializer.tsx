@@ -3,6 +3,7 @@
 
 import { useEffect } from 'react';
 import { setToken, logout } from '@/store/slices/authSlice';
+import { fetchUserProfile } from '@/store/slices/userSlice';
 import { useAppDispatch } from '@/store/slices/hooks';
 
 const AuthInitializer = () => {
@@ -23,6 +24,8 @@ const AuthInitializer = () => {
         dispatch(logout());
       } else {
         dispatch(setToken(token));
+        // Récupérer le profil utilisateur après avoir défini le token
+        dispatch(fetchUserProfile());
       }
     } catch (err) {
       console.error('❌ Token invalide :', err);

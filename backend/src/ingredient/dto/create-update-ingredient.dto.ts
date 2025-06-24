@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsNumber, IsOptional, IsPositive, IsString, MinLength, ValidateIf } from "class-validator";
+import { IsNotEmpty, IsNumber, IsOptional, IsPositive, IsString, Min, MinLength, ValidateIf } from "class-validator";
 import { registerDecorator, ValidationArguments } from "class-validator";
 
 export function IsIngredientNameUnique(validationOptions?: any) {
@@ -34,7 +34,7 @@ export class CreateUpdateIngredientDto {
 
     @IsNotEmpty()
     @IsNumber()
-    @IsPositive()
+    @Min(0, { message: 'Price must be a positive number' })
     price: number;
 
     @IsOptional()

@@ -95,9 +95,8 @@ export default function LiveOrdersPage() {
 
 
   return (
-    <ProtectRoute allowedRoles={[Role.Employee, Role.Admin]}>
-      <Box minHeight="100vh" sx={{ background: 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)', py: { xs: 2, md: 6 } }}>
-        <Box maxWidth="md" mx="auto">
+    <ProtectRoute allowedRoles={[Role.Employee, Role.Admin]}>      <Box minHeight="100vh" sx={{ background: 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)', py: { xs: 2, md: 6 }, px: { xs: 1, sm: 0 } }}>
+        <Box maxWidth={{ xs: "100%", md: "md" }} mx="auto">
           {error && (
             <Typography color="error" variant="h6" textAlign="center" mb={2}>
               {error}

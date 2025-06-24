@@ -93,7 +93,7 @@ export class CategoryService {
             }
         }));
         await this.categoryModel.bulkWrite(ops);
-        return { success: true };
+        return await this.getAll();
     }
 
 }
