@@ -35,6 +35,7 @@ import {
 } from "@mui/icons-material";
 import { Formik, Form, FieldArray } from "formik";
 import * as Yup from "yup";
+import { isValidPhoneNumber, parsePhoneNumber } from "libphonenumber-js";
 import { fetchProducts } from "@/store/slices/productSlice";
 import { fetchCategories } from "@/store/slices/categorySlice";
 import {
@@ -89,8 +90,23 @@ type OrderFormValues = {
 
 // ✅ Validation Yup
 const validationSchema = Yup.object().shape({
-  customerName: Yup.string().required("Customer Name is Required"),
-  phoneNumber: Yup.string().required("Phone Number is Required"),
+  customerName: Yup.string().required("Customer Name is Required").min(3, "Name must be at least 3 characters"),
+  phoneNumber: Yup.string()
+    .required("Phone Number is Required")
+    .test("phone-validation", "Please enter a valid phone number", (value) => {
+      if (!value) return false;
+      try {
+        // Essayer d'abord avec le code pays belge par défaut
+        return isValidPhoneNumber(value, "BE");
+      } catch {
+        // Si ça échoue, essayer sans code pays spécifique
+        try {
+          return isValidPhoneNumber(value);
+        } catch {
+          return false;
+        }
+      }
+    }),
   orderType: Yup.mixed<OrderType>().oneOf(Object.values(OrderType)).required(),
   deliveryAddress: Yup.object().when("orderType", {
     is: OrderType.DELIVERY,
@@ -124,15 +140,25 @@ const validationSchema = Yup.object().shape({
     .min(1, "Add at least one product"),
   paymentMethod: Yup.mixed<PaymentMethod>()
     .oneOf(Object.values(PaymentMethod))
-    .required(),
-  scheduledFor: Yup.string()
+    .required(),  scheduledFor: Yup.string()
     .nullable()
     .test(
-      "scheduledFor-required-if-filled",
-      "Scheduled date/time is required if set",
+      "scheduledFor-validation",
+      "Scheduled date/time must be at least 10 minutes in the future",
       function (value) {
         if (value === null || value === undefined || value === "") return true;
-        return !isNaN(Date.parse(value));
+        
+        const selectedDate = new Date(value);
+        const now = new Date();
+        const minDate = new Date(now.getTime() + 10 * 60 * 1000); // 10 minutes dans le futur
+        
+        // Vérifier si la date est valide
+        if (isNaN(selectedDate.getTime())) {
+          return false;
+        }
+        
+        // Vérifier si la date est dans le futur (au moins 10 minutes)
+        return selectedDate >= minDate;
       }
     ),
 });
@@ -186,10 +212,15 @@ const TakeOrderPage: React.FC = () => {
   const [alert, setAlert] = useState<{
     type: "success" | "error";
     message: string;
-  } | null>(null);
-  const [previousOrderItems, setPreviousOrderItems] = useState<OrderItemForm[]>(
+  } | null>(null);  const [previousOrderItems, setPreviousOrderItems] = useState<OrderItemForm[]>(
     []
   );
+  // État pour la date/heure minimum (mise à jour en temps réel)
+  const [minDateTime, setMinDateTime] = useState(() => {
+    const now = new Date();
+    now.setMinutes(now.getMinutes() + 10); // 10 minutes dans le futur
+    return now.toISOString().substring(0, 16);
+  });
 
   const productsPerPage = 6;
 
@@ -225,13 +256,29 @@ const TakeOrderPage: React.FC = () => {
     dispatch(fetchCategories());
     dispatch(fetchIngredients());
   }, [dispatch]);
-
   // Initialise la première catégorie par défaut
   useEffect(() => {
     if (categories.length > 0 && !selectedCategory) {
       setSelectedCategory(categories[0]._id);
     }
   }, [categories]);
+
+  // Met à jour la date/heure minimum toutes les minutes
+  useEffect(() => {
+    const updateMinDateTime = () => {
+      const now = new Date();
+      now.setMinutes(now.getMinutes() + 10); // 10 minutes dans le futur
+      setMinDateTime(now.toISOString().substring(0, 16));
+    };
+
+    // Mettre à jour immédiatement
+    updateMinDateTime();
+
+    // Puis mettre à jour toutes les minutes
+    const interval = setInterval(updateMinDateTime, 60000); // 60 secondes
+
+    return () => clearInterval(interval);
+  }, []);
 
   // Valeurs initiales dynamiques (édition ou création)
   const getInitialFormValues = (): OrderFormValues => {
@@ -649,19 +696,36 @@ const TakeOrderPage: React.FC = () => {
                         error={!!(errors.customerName && touched.customerName)}
                         helperText={touched.customerName && errors.customerName}
                         sx={{ mb: 2 }}
-                      />
+                      />{" "}
                       <TextField
                         label="Phone Number"
                         name="phoneNumber"
                         type="tel"
                         value={values.phoneNumber || ""}
-                        onChange={handleChange}
+                        onChange={(e) => {
+                          let value = e.target.value;
+                          // Formatage automatique du numéro belge
+                          try {
+                            const phoneNumber = parsePhoneNumber(value, "BE");
+                            if (phoneNumber) {
+                              value = phoneNumber.formatInternational();
+                            }
+                          } catch {
+                            // Garder la valeur originale si le parsing échoue
+                          }
+                          handleChange({
+                            target: {
+                              name: "phoneNumber",
+                              value: value,
+                            },
+                          });
+                        }}
                         fullWidth
                         error={!!(errors.phoneNumber && touched.phoneNumber)}
                         helperText={touched.phoneNumber && errors.phoneNumber}
+                        placeholder="Ex: 04 12 34 56 78 ou +32 4 12 34 56 78"
                         sx={{ mb: 2 }}
-                      />
-                      <TextField
+                      />                      <TextField
                         label="Scheduled for"
                         name="scheduledFor"
                         type="datetime-local"
@@ -673,10 +737,10 @@ const TakeOrderPage: React.FC = () => {
                         sx={{ mt: 2, mb: 2 }}
                         InputLabelProps={{ shrink: true }}
                         inputProps={{
-                          min: new Date().toISOString().substring(0, 16),
+                          min: minDateTime,
+                          step: 300, // Pas de 5 minutes (300 secondes)
                         }}
                       />
-
                       <FormLabel>Order Type</FormLabel>
                       <RadioGroup
                         row
@@ -695,7 +759,6 @@ const TakeOrderPage: React.FC = () => {
                           label="Delivery"
                         />
                       </RadioGroup>
-
                       {values.orderType === OrderType.DELIVERY && (
                         <Box sx={{ mt: 2 }}>
                           <Grid container spacing={2}>

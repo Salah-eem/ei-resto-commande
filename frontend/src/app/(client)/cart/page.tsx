@@ -19,6 +19,9 @@ import {
   FormControlLabel,
   Radio,
   TextField,
+  Select,
+  MenuItem,
+  InputLabel,
 } from "@mui/material";
 import {
   Add as AddIcon,
@@ -34,6 +37,7 @@ import {
 import { loadStripe } from "@stripe/stripe-js";
 import { useFormik } from "formik";
 import * as yup from "yup";
+import { parsePhoneNumber, isValidPhoneNumber } from "libphonenumber-js";
 import GeoapifyAutocomplete from "@/components/GeoapifyAutocomplete";
 
 import { useAppDispatch, useAppSelector } from "@/store/slices/hooks";
@@ -53,6 +57,20 @@ import api from "@/lib/api";
 const STRIPE_PUBLIC_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLIC_KEY!;
 const API_URL = process.env.NEXT_PUBLIC_API_URL!;
 
+// Liste des pays avec leurs indicatifs
+const COUNTRY_CODES = [
+  { code: "BE", name: "Belgique", prefix: "+32", flag: "🇧🇪" },
+  { code: "FR", name: "France", prefix: "+33", flag: "🇫🇷" },
+  { code: "DE", name: "Allemagne", prefix: "+49", flag: "🇩🇪" },
+  { code: "NL", name: "Pays-Bas", prefix: "+31", flag: "🇳🇱" },
+  { code: "LU", name: "Luxembourg", prefix: "+352", flag: "🇱🇺" },
+  { code: "GB", name: "Royaume-Uni", prefix: "+44", flag: "🇬🇧" },
+  { code: "ES", name: "Espagne", prefix: "+34", flag: "🇪🇸" },
+  { code: "IT", name: "Italie", prefix: "+39", flag: "🇮🇹" },
+  { code: "CH", name: "Suisse", prefix: "+41", flag: "🇨🇭" },
+  { code: "US", name: "États-Unis", prefix: "+1", flag: "🇺🇸" },
+];
+
 const CartPage: React.FC = () => {
   const dispatch = useAppDispatch();
   const router = useRouter();
@@ -62,20 +80,23 @@ const CartPage: React.FC = () => {
   const cartLoading = useAppSelector((s) => s.cart.loading);
   const cartError = useAppSelector((s) => s.cart.error);
 
-  const { deliveryFee, loading: feeLoading, error: feeError } = useAppSelector(
-    (s) => s.restaurant
-  );
+  const {
+    deliveryFee,
+    loading: feeLoading,
+    error: feeError,
+  } = useAppSelector((s) => s.restaurant);
 
   // Local state
   const [orderType, setOrderType] = useState<OrderType>(OrderType.PICKUP);
-  const [paymentMethod, setPaymentMethod] = useState<"card" | "paypal" | "cash">(
-    "card"
-  );
+  const [paymentMethod, setPaymentMethod] = useState<
+    "card" | "paypal" | "cash"
+  >("card");
   const [loadingPayment, setLoadingPayment] = useState(false);
   const [errorPayment, setErrorPayment] = useState<string | null>(null);
   const [selectedLat, setSelectedLat] = useState<number | null>(null);
   const [selectedLng, setSelectedLng] = useState<number | null>(null);
   const [selectedCountry, setSelectedCountry] = useState<string>("");
+  const [phoneCountryCode, setPhoneCountryCode] = useState<string>("BE");
 
   // Fetch cart & restaurant info
   useEffect(() => {
@@ -102,8 +123,31 @@ const CartPage: React.FC = () => {
     validationSchema:
       orderType === OrderType.DELIVERY
         ? yup.object({
-            name: yup.string().required("Name is required"),
-            phone: yup.string().required("Phone is required"),
+            name: yup
+              .string()
+              .required("Name is required")
+              .min(3, "Name must be at least 3 characters"),
+            phone: yup
+              .string()
+              .required("Phone is required")
+              .test(
+                "phone-validation",
+                "Please enter a valid phone number",
+                (value) => {
+                  if (!value) return false;
+                  try {
+                    // Utiliser le code pays sélectionné
+                    return isValidPhoneNumber(value, phoneCountryCode as any);
+                  } catch {
+                    // Si ça échoue, essayer sans code pays spécifique
+                    try {
+                      return isValidPhoneNumber(value);
+                    } catch {
+                      return false;
+                    }
+                  }
+                }
+              ),
             address: yup.string().required("Address is required"),
             streetNumber: yup.string().required("Street number is required"),
             city: yup.string().required("City is required"),
@@ -111,8 +155,29 @@ const CartPage: React.FC = () => {
             instructions: yup.string(),
           })
         : yup.object({
-            name: yup.string().required("Name is required"),
-            phone: yup.string().required("Phone number is required"),
+            name: yup
+              .string()
+              .required("Name is required")
+              .min(3, "Name must be at least 3 characters"),
+            phone: yup
+              .string()
+              .required("Phone number is required")
+              .test(
+                "phone-validation",
+                "Please enter a valid phone number",
+                (value) => {
+                  if (!value) return false;
+                  try {
+                    return isValidPhoneNumber(value, phoneCountryCode as any);
+                  } catch {
+                    try {
+                      return isValidPhoneNumber(value);
+                    } catch {
+                      return false;
+                    }
+                  }
+                }
+              ),
             instructions: yup.string(),
           }),
     onSubmit: async (vals) => {
@@ -178,16 +243,10 @@ const CartPage: React.FC = () => {
       try {
         if (paymentMethod === "card") {
           const stripe = await loadStripe(STRIPE_PUBLIC_KEY);
-          const { data } = await api.post(
-            `${API_URL}/payment/stripe`,
-            payload
-          );
+          const { data } = await api.post(`${API_URL}/payment/stripe`, payload);
           await stripe?.redirectToCheckout({ sessionId: data.sessionId });
         } else if (paymentMethod === "paypal") {
-          const { data } = await api.post(
-            `${API_URL}/payment/paypal`,
-            payload
-          );
+          const { data } = await api.post(`${API_URL}/payment/paypal`, payload);
           window.location.href = data.approvalUrl;
         } else {
           const { data } = await api.post(`${API_URL}/payment/cash`, payload);
@@ -277,7 +336,13 @@ const CartPage: React.FC = () => {
 
     if (qty > 0) {
       dispatch(
-        updateCartQuantity({ userId, productId, size, quantity: qty, ingredients })
+        updateCartQuantity({
+          userId,
+          productId,
+          size,
+          quantity: qty,
+          ingredients,
+        })
       );
     } else {
       dispatch(removeFromCart({ userId, itemId }));
@@ -327,20 +392,21 @@ const CartPage: React.FC = () => {
         >
           <CircularProgress />
         </Box>
-      )}      <Typography 
-        variant="h4" 
-        textAlign="center" 
+      )}{" "}
+      <Typography
+        variant="h4"
+        textAlign="center"
         gutterBottom
         sx={{ fontSize: { xs: "1.5rem", sm: "2.125rem" } }}
       >
         <ShoppingCartIcon fontSize="large" /> Your Cart
       </Typography>
-
       {cartItems.length === 0 ? (
         <Typography textAlign="center" variant="h6">
           Your cart is empty.
         </Typography>
-      ) : (        <Grid container spacing={{ xs: 2, md: 4 }}>
+      ) : (
+        <Grid container spacing={{ xs: 2, md: 4 }}>
           {/* Item list */}
           <Grid item xs={12} lg={7}>
             <Stack spacing={2}>
@@ -369,7 +435,8 @@ const CartPage: React.FC = () => {
                 const lineTotal = unitPriceWithExtras * item.quantity;
                 const hasExtras = extrasUnitSum > 0;
 
-                return (                  <Paper
+                return (
+                  <Paper
                     key={item._id}
                     sx={{
                       display: "flex",
@@ -377,18 +444,18 @@ const CartPage: React.FC = () => {
                       alignItems: { xs: "stretch", sm: "flex-start" },
                       p: { xs: 1.5, sm: 2 },
                       borderRadius: 2,
-                      gap: { xs: 1.5, sm: 0 }
+                      gap: { xs: 1.5, sm: 0 },
                     }}
                   >
                     <Avatar
                       src={`${API_URL}/${item.image_url}`}
                       variant="rounded"
-                      sx={{ 
-                        width: { xs: 60, sm: 80 }, 
-                        height: { xs: 60, sm: 80 }, 
-                        mr: { xs: 0, sm: 2 }, 
+                      sx={{
+                        width: { xs: 60, sm: 80 },
+                        height: { xs: 60, sm: 80 },
+                        mr: { xs: 0, sm: 2 },
                         mt: { xs: 0, sm: 1 },
-                        alignSelf: { xs: "center", sm: "flex-start" }
+                        alignSelf: { xs: "center", sm: "flex-start" },
                       }}
                     />
                     <Box sx={{ flex: 1 }}>
@@ -399,10 +466,7 @@ const CartPage: React.FC = () => {
                         </Typography>
                       )}
                       {hasExtras && (
-                        <Typography
-                          variant="body2"
-                          sx={{ mb: 1 }}
-                        >
+                        <Typography variant="body2" sx={{ mb: 1 }}>
                           UNIT PRICE (with extras):{" "}
                           <strong>{unitPriceWithExtras.toFixed(2)} €</strong>
                         </Typography>
@@ -418,73 +482,78 @@ const CartPage: React.FC = () => {
                       </Typography>
 
                       {/* Ingredients display */}
-                      {hasExtras && item.baseIngredients && item.ingredients && (
-                        <Box sx={{ mb: 1 }}>
-                          <Typography
-                            variant="caption"
-                            color="text.secondary"
-                          >
-                            Ingredients:
-                          </Typography>
-                          <ul style={{ margin: 0, paddingLeft: 16 }}>
-                            {/* 
+                      {hasExtras &&
+                        item.baseIngredients &&
+                        item.ingredients && (
+                          <Box sx={{ mb: 1 }}>
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                            >
+                              Ingredients:
+                            </Typography>
+                            <ul style={{ margin: 0, paddingLeft: 16 }}>
+                              {/* 
                                 • “No {name}” if removed
                                 • “{name} xN” if quantity > 1
                                 • if quantity === 1 → display nothing
                             */}
-                            {(item.baseIngredients || []).map((baseIng: any) => {
-                              const found = (item.ingredients || []).find(
-                                (ing: any) => ing._id === baseIng._id
-                              );
-                              // removed → “No {name}”
-                              if (!found) {
-                                return (
-                                  <li
-                                    key={baseIng._id}
-                                    style={{ color: "#888" }}
-                                  >
-                                    No {baseIng.name}
-                                  </li>
-                                );
-                              }
-                              // quantity > 1 → “{name} xN”
-                              if (found.quantity > 1) {
-                                return (
-                                  <li key={baseIng._id}>
-                                    {baseIng.name} x{found.quantity}
-                                  </li>
-                                );
-                              }
-                              // quantity === 1 → display nothing
-                              return null;
-                            })}
+                              {(item.baseIngredients || []).map(
+                                (baseIng: any) => {
+                                  const found = (item.ingredients || []).find(
+                                    (ing: any) => ing._id === baseIng._id
+                                  );
+                                  // removed → “No {name}”
+                                  if (!found) {
+                                    return (
+                                      <li
+                                        key={baseIng._id}
+                                        style={{ color: "#888" }}
+                                      >
+                                        No {baseIng.name}
+                                      </li>
+                                    );
+                                  }
+                                  // quantity > 1 → “{name} xN”
+                                  if (found.quantity > 1) {
+                                    return (
+                                      <li key={baseIng._id}>
+                                        {baseIng.name} x{found.quantity}
+                                      </li>
+                                    );
+                                  }
+                                  // quantity === 1 → display nothing
+                                  return null;
+                                }
+                              )}
 
-                            {/* Added extras */}
-                            {((item.ingredients || []).filter(
-                              (ing: any) =>
-                                !(item.baseIngredients || []).some(
-                                  (baseIng: any) => baseIng._id === ing._id
+                              {/* Added extras */}
+                              {(item.ingredients || [])
+                                .filter(
+                                  (ing: any) =>
+                                    !(item.baseIngredients || []).some(
+                                      (baseIng: any) => baseIng._id === ing._id
+                                    )
                                 )
-                            )).map((extra: any) => (
-                              <li
-                                key={extra._id}
-                                style={{ color: "#1976d2" }}
-                              >
-                                + {extra.name}
-                                {extra.quantity && extra.quantity > 1
-                                  ? ` x${extra.quantity}`
-                                  : ""}
-                                {extra.price
-                                  ? ` (+${(
-                                      extra.price *
-                                      (extra.quantity || 1)
-                                    ).toFixed(2)}€)`
-                                  : ""}
-                              </li>
-                            ))}
-                          </ul>
-                        </Box>
-                      )}
+                                .map((extra: any) => (
+                                  <li
+                                    key={extra._id}
+                                    style={{ color: "#1976d2" }}
+                                  >
+                                    + {extra.name}
+                                    {extra.quantity && extra.quantity > 1
+                                      ? ` x${extra.quantity}`
+                                      : ""}
+                                    {extra.price
+                                      ? ` (+${(
+                                          extra.price * (extra.quantity || 1)
+                                        ).toFixed(2)}€)`
+                                      : ""}
+                                  </li>
+                                ))}
+                            </ul>
+                          </Box>
+                        )}
                     </Box>
 
                     <Stack direction="row" spacing={1} alignItems="center">
@@ -556,7 +625,9 @@ const CartPage: React.FC = () => {
                       <IconButton
                         color="error"
                         onClick={() =>
-                          dispatch(removeFromCart({ userId, itemId: item._id! }))
+                          dispatch(
+                            removeFromCart({ userId, itemId: item._id! })
+                          )
                         }
                       >
                         <DeleteIcon />
@@ -566,8 +637,11 @@ const CartPage: React.FC = () => {
                 );
               })}
             </Stack>
-          </Grid>          {/* Summary & Order Form */}
-          <Grid item xs={12} lg={5}>            <Card
+          </Grid>{" "}
+          {/* Summary & Order Form */}
+          <Grid item xs={12} lg={5}>
+            {" "}
+            <Card
               sx={{
                 p: { xs: 2, sm: 3 },
                 borderRadius: 2,
@@ -584,9 +658,7 @@ const CartPage: React.FC = () => {
                   <RadioGroup
                     row
                     value={orderType}
-                    onChange={(e) =>
-                      setOrderType(e.target.value as OrderType)
-                    }
+                    onChange={(e) => setOrderType(e.target.value as OrderType)}
                   >
                     <FormControlLabel
                       value="pickup"
@@ -651,20 +723,62 @@ const CartPage: React.FC = () => {
                   error={formik.touched.name && Boolean(formik.errors.name)}
                   helperText={formik.touched.name && formik.errors.name}
                   sx={{ mb: 2 }}
-                />
+                />{" "}
+                <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
+                  <FormControl sx={{ minWidth: 140 }}>
+                    <InputLabel>Pays</InputLabel>
+                    <Select
+                      value={phoneCountryCode}
+                      onChange={(e) => setPhoneCountryCode(e.target.value)}
+                      label="Pays"
+                      size="medium"
+                    >
+                      {COUNTRY_CODES.map((country) => (
+                        <MenuItem key={country.code} value={country.code}>
+                          <Stack
+                            direction="row"
+                            spacing={1}
+                            alignItems="center"
+                          >
+                            <span>{country.flag}</span>
+                            <span>{country.prefix}</span>
+                          </Stack>
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
 
-                <TextField
-                  fullWidth
-                  label="Phone Number"
-                  name="phone"
-                  type="tel"
-                  value={formik.values.phone}
-                  onChange={formik.handleChange}
-                  onBlur={formik.handleBlur}
-                  error={formik.touched.phone && Boolean(formik.errors.phone)}
-                  helperText={formik.touched.phone && formik.errors.phone}
-                  sx={{ mb: 2 }}
-                />
+                  <TextField
+                    fullWidth
+                    label="Phone Number"
+                    name="phone"
+                    type="tel"
+                    value={formik.values.phone}
+                    onChange={(e) => {
+                      let value = e.target.value;
+                      // Formatage automatique du numéro selon le pays sélectionné
+                      try {
+                        const phoneNumber = parsePhoneNumber(
+                          value,
+                          phoneCountryCode as any
+                        );
+                        if (phoneNumber) {
+                          value = phoneNumber.formatInternational();
+                        }
+                      } catch {
+                        // Garder la valeur originale si le parsing échoue
+                      }
+                      formik.setFieldValue("phone", value);
+                    }}
+                    onBlur={formik.handleBlur}
+                    error={formik.touched.phone && Boolean(formik.errors.phone)}
+                    helperText={formik.touched.phone && formik.errors.phone}
+                    placeholder={`Ex: ${
+                      COUNTRY_CODES.find((c) => c.code === phoneCountryCode)
+                        ?.prefix
+                    } 4 12 34 56 78`}
+                  />
+                </Stack>
                 {orderType === "delivery" && (
                   <Stack spacing={2}>
                     <GeoapifyAutocomplete
@@ -680,7 +794,9 @@ const CartPage: React.FC = () => {
                       error={Boolean(
                         formik.touched.address && formik.errors.address
                       )}
-                      helperText={formik.touched.address && formik.errors.address}
+                      helperText={
+                        formik.touched.address && formik.errors.address
+                      }
                     />
 
                     <TextField
@@ -691,7 +807,8 @@ const CartPage: React.FC = () => {
                       onChange={formik.handleChange}
                       onBlur={formik.handleBlur}
                       error={Boolean(
-                        formik.touched.streetNumber && formik.errors.streetNumber
+                        formik.touched.streetNumber &&
+                          formik.errors.streetNumber
                       )}
                       helperText={
                         formik.touched.streetNumber &&
@@ -726,7 +843,6 @@ const CartPage: React.FC = () => {
                     />
                   </Stack>
                 )}
-
                 <TextField
                   label="Instructions (optional)"
                   name="instructions"
@@ -738,7 +854,6 @@ const CartPage: React.FC = () => {
                   onChange={formik.handleChange}
                   onBlur={formik.handleBlur}
                 />
-
                 <Typography variant="subtitle1" sx={{ mt: 3 }}>
                   Payment Method
                 </Typography>
@@ -775,9 +890,7 @@ const CartPage: React.FC = () => {
                     }
                   />
                 </RadioGroup>
-
                 {errorPayment && <Alert severity="error">{errorPayment}</Alert>}
-
                 <Button
                   type="submit"
                   fullWidth

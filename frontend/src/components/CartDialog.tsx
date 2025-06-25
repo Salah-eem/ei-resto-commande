@@ -352,7 +352,7 @@ const CartDialog: React.FC<CartDialogProps> = ({ open, onClose }) => {
             Total: {totalPrice.toFixed(2)}€
           </Typography>
           <Button onClick={goToCart} variant="contained" sx={{ mt: 1 }}>
-            View cart
+            Go to checkout
           </Button>
         </Box>
       </DialogContent>

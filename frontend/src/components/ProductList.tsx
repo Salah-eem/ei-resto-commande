@@ -50,7 +50,12 @@ const ProductList: React.FC = () => {
         // Si l'API ne répond pas, on utilise les 7 premiers produits
         if (res.status === 200) {
           const data = res.data as Product[];
-          setFeaturedProducts(data);
+          const featuredIds = data.map((p) => p._id);
+          // Filtre les produits pour ne garder que ceux qui sont dans la liste des produits les
+          const filteredProducts = products.filter((p) => featuredIds.includes(p._id));
+          // Limite à 7 produits
+          setFeaturedProducts(filteredProducts.slice(0, 7));
+          // setFeaturedProducts(data);
         } else {
           setFeaturedProducts(products.slice(0, 7)); // fallback
         }
