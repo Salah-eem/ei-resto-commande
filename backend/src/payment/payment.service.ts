@@ -29,6 +29,8 @@ export class PaymentService {
   private readonly PAYPAL_SECRET = this.config.get('PAYPAL_SECRET');
   private readonly PAYPAL_MODE = this.config.get('PAYPAL_MODE');
 
+  private readonly FRONTEND_URI = this.config.get('FRONTEND_URI');
+
   constructor(
     private config: ConfigService,
     private orderService: OrderService,
@@ -89,8 +91,8 @@ export class PaymentService {
         address: JSON.stringify(address),
         deliveryFee: deliveryFee.toString(), // si besoin dans webhook
       },
-      success_url: `http://localhost:3000/order-confirmation?success=true`,
-      cancel_url: `http://localhost:3000/cart?canceled=true`,
+      success_url: `${this.FRONTEND_URI}/order-confirmation?success=true`,
+      cancel_url: `${this.FRONTEND_URI}/cart?canceled=true`,
     });
 
     return { sessionId: session.id };
