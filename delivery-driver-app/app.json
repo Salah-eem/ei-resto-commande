@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "RestoCommande - Delivery Driver",
-    "slug": "ei-resto-delivery-driver",
+    "slug": "delivery-driver-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/logo.png",
@@ -55,7 +55,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "1c2f8084-dc2f-46fb-8bdd-55241d7035fd"
+        "projectId": "8d43e64e-15d2-4f9a-9d2c-e2032dbc5e30"
       }
     },
     "runtimeVersion": {
