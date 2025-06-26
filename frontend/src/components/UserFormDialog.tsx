@@ -5,6 +5,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { useFormik } from 'formik';
 import * as yup from 'yup';
+import { isValidPhoneNumber, parsePhoneNumber } from 'libphonenumber-js';
 import api from '@/lib/api';
 
 interface UserFormDialogProps {
@@ -57,9 +58,22 @@ const UserFormDialog: React.FC<UserFormDialogProps> = ({ open, onClose, onSubmit
           .test('min', 'Password must be at least 8 characters', value => !value || value.length >= 8)
           .test('digit', 'Password must contain at least one digit', value => !value || /[0-9]/.test(value))
           .test('upper', 'Password must contain at least one uppercase letter', value => !value || /[A-Z]/.test(value))
-          .test('special', 'Password must contain at least one special character', value => !value || /[!@#$%^&*(),.?":{}|<>\[\]\\;'`~]/.test(value)),
+          .test('special', 'Password must contain at least one special character', value => !value || /[!@#$%^&*(),.?":{}|<>\[\]\\;'`~]/.test(value)),      }),
+    phone: yup.string()
+      .test("phone-validation", "Please enter a valid phone number", (value) => {
+        if (!value || value.trim() === "") return true; // Le téléphone est optionnel
+        try {
+          // Essayer d'abord avec le code pays belge par défaut
+          return isValidPhoneNumber(value, "BE");
+        } catch {
+          // Si ça échoue, essayer sans code pays spécifique
+          try {
+            return isValidPhoneNumber(value);
+          } catch {
+            return false;
+          }
+        }
       }),
-    phone: yup.string(),
     role: yup.number().oneOf([Role.Admin, Role.Employee, Role.Client]),
   });
 
@@ -157,9 +171,30 @@ const UserFormDialog: React.FC<UserFormDialogProps> = ({ open, onClose, onSubmit
           )}
           <TextField label="First Name" name="firstName" value={formik.values.firstName} onChange={formik.handleChange} onBlur={formik.handleBlur} error={!!(formik.touched.firstName && (formik.errors.firstName || fullNameUniqueError))} helperText={formik.touched.firstName && (formik.errors.firstName || fullNameUniqueError)} sx={{ mt: 2 }} />
           <TextField label="Last Name" name="lastName" value={formik.values.lastName} onChange={formik.handleChange} onBlur={formik.handleBlur} error={!!(formik.touched.lastName && !!formik.errors.lastName)} helperText={formik.touched.lastName && formik.errors.lastName} />
-          <TextField label="Email" name="email" value={formik.values.email} onChange={formik.handleChange} onBlur={formik.handleBlur} error={!!(formik.touched.email && (formik.errors.email || emailUniqueError))} helperText={formik.touched.email && (formik.errors.email || emailUniqueError)} type="email" />
-          <TextField label="Password" name="password" value={formik.values.password} onChange={formik.handleChange} onBlur={formik.handleBlur} error={formik.touched.password && !!formik.errors.password} helperText={formik.touched.password && formik.errors.password} type="password" />
-          <TextField label="Phone" name="phone" value={formik.values.phone} onChange={formik.handleChange} onBlur={formik.handleBlur} error={formik.touched.phone && !!formik.errors.phone} helperText={formik.touched.phone && formik.errors.phone} />
+          <TextField label="Email" name="email" value={formik.values.email} onChange={formik.handleChange} onBlur={formik.handleBlur} error={!!(formik.touched.email && (formik.errors.email || emailUniqueError))} helperText={formik.touched.email && (formik.errors.email || emailUniqueError)} type="email" />          <TextField label="Password" name="password" value={formik.values.password} onChange={formik.handleChange} onBlur={formik.handleBlur} error={formik.touched.password && !!formik.errors.password} helperText={formik.touched.password && formik.errors.password} type="password" />
+          <TextField 
+            label="Phone" 
+            name="phone" 
+            type="tel"
+            value={formik.values.phone} 
+            onChange={(e) => {
+              let value = e.target.value;
+              // Formatage automatique du numéro belge
+              try {
+                const phoneNumber = parsePhoneNumber(value, "BE");
+                if (phoneNumber) {
+                  value = phoneNumber.formatInternational();
+                }
+              } catch {
+                // Garder la valeur originale si le parsing échoue
+              }
+              formik.setFieldValue("phone", value);
+            }} 
+            onBlur={formik.handleBlur} 
+            error={formik.touched.phone && !!formik.errors.phone} 
+            helperText={formik.touched.phone && formik.errors.phone}
+            placeholder="Ex: 04 12 34 56 78 ou +32 4 12 34 56 78"
+          />
           <Select label="Role" name="role" value={formik.values.role} onChange={formik.handleChange} onBlur={formik.handleBlur}>
             <MenuItem value={Role.Admin}>Admin</MenuItem>
             <MenuItem value={Role.Employee}>Employee</MenuItem>

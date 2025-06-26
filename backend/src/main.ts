@@ -17,6 +17,7 @@ async function bootstrap() {
   }));  // Activer CORS
   app.enableCors({
     origin: [
+       /^https?:\/\/.*\.exp\.direct(:\d+)?$/, // Expo Go app !!!! ONLY FOR TEST !!!!! TO DELETE AFTER
       'http://localhost:8081', // Dev delivery app
       'http://localhost:8082', // Dev delivery app (port alternatif)
       'http://localhost:8083', // Dev delivery app (port alternatif)
