@@ -843,7 +843,7 @@ const CartPage: React.FC = () => {
                     />
                   </Stack>
                 )}
-                <TextField
+                {/* <TextField
                   label="Instructions (optional)"
                   name="instructions"
                   fullWidth
@@ -853,7 +853,7 @@ const CartPage: React.FC = () => {
                   value={formik.values.instructions}
                   onChange={formik.handleChange}
                   onBlur={formik.handleBlur}
-                />
+                /> */}
                 <Typography variant="subtitle1" sx={{ mt: 3 }}>
                   Payment Method
                 </Typography>
