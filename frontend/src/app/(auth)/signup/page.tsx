@@ -1,4 +1,3 @@
-// pages/SignupPage.tsx
 'use client';
 import React from 'react';
 import {
@@ -20,7 +19,7 @@ import { RootState } from '@/store/store';
 import { useAppDispatch } from '@/store/slices/hooks';
 import { fetchUserProfile } from '@/store/slices/userSlice';
 import api from '@/lib/api';
-import { useRouter } from 'next/router';
+import { useRouter } from 'next/navigation';
 
 // Schéma de validation avec Yup
 const validationSchema = yup.object({
