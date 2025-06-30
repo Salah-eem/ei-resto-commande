@@ -20,6 +20,7 @@ import { RootState } from '@/store/store';
 import { useAppDispatch } from '@/store/slices/hooks';
 import { fetchUserProfile } from '@/store/slices/userSlice';
 import api from '@/lib/api';
+import { useRouter } from 'next/router';
 
 // Schéma de validation avec Yup
 const validationSchema = yup.object({
@@ -59,6 +60,7 @@ const mergeCartAndOrdersAfterSignup = async () => {
 };
 
 const SignupPage: React.FC = () => {
+  const router = useRouter();
   const dispatch = useAppDispatch();
   const { loading, error } = useSelector((state: RootState) => state.auth);
 
@@ -77,6 +79,7 @@ const SignupPage: React.FC = () => {
       if (result.meta.requestStatus === "fulfilled") {
         await mergeCartAndOrdersAfterSignup();
         await dispatch(fetchUserProfile());
+        router.push('/');
       }
     },
   });
