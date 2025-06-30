@@ -7,7 +7,7 @@ import AccessTimeIcon from "@mui/icons-material/AccessTime";
 import RestaurantMenuIcon from "@mui/icons-material/RestaurantMenu";
 import EuroIcon from "@mui/icons-material/Euro";
 import Link from "next/link";
-import { Order, PaymentStatus } from "@/types/order";
+import { Order, OrderStatus, PaymentStatus } from "@/types/order";
 
 const OrderCard: React.FC<{ order: Order, deliveryFee: number }> = ({ order, deliveryFee }) => {
   return (
@@ -66,7 +66,7 @@ const OrderCard: React.FC<{ order: Order, deliveryFee: number }> = ({ order, del
         </Typography>
       </Stack>
 
-      {/* {order.orderType === "delivery" && order.orderStatus !== "delivered" && order.orderStatus !== "canceled" && ( */}
+      {order.orderStatus !== OrderStatus.DELIVERED && order.orderStatus !== OrderStatus.CANCELED && (
         <Box mt={2}>
           <Link href={`/order-tracking/${order._id}`} passHref>
             <Button variant="outlined" fullWidth>
@@ -74,7 +74,7 @@ const OrderCard: React.FC<{ order: Order, deliveryFee: number }> = ({ order, del
             </Button>
           </Link>
         </Box>
-      {/* )} */}
+      )}
     </Paper>
   );
 };

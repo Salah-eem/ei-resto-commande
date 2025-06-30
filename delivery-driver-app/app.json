@@ -55,7 +55,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "8d43e64e-15d2-4f9a-9d2c-e2032dbc5e30"
+        "projectId": "8296c7f8-3101-4f16-85f3-1d9a167f731a"
       }
     },
     "runtimeVersion": {
@@ -64,6 +64,6 @@
     "updates": {
       "url": "https://u.expo.dev/1c2f8084-dc2f-46fb-8bdd-55241d7035fd"
     },
-    "owner": "salah1070"
+    "owner": "svlvh"
   }
 }

@@ -19,6 +19,7 @@ import { signupUser } from '@/store/slices/authSlice';
 import { RootState } from '@/store/store';
 import { useAppDispatch } from '@/store/slices/hooks';
 import { fetchUserProfile } from '@/store/slices/userSlice';
+import api from '@/lib/api';
 
 // Schéma de validation avec Yup
 const validationSchema = yup.object({
@@ -45,6 +46,18 @@ const validationSchema = yup.object({
     .required('Please confirm your password'),
 });
 
+const mergeCartAndOrdersAfterSignup = async () => {
+  const guestId = localStorage.getItem("user_id");
+  if (guestId) {
+    try {
+      await api.post("/cart/merge", { guestId });
+      await api.post("/order/merge", { guestId });
+    } catch (error) {
+      console.error("Erreur lors de la fusion des commandes", error);
+    }
+  }
+};
+
 const SignupPage: React.FC = () => {
   const dispatch = useAppDispatch();
   const { loading, error } = useSelector((state: RootState) => state.auth);
@@ -62,7 +75,8 @@ const SignupPage: React.FC = () => {
       const { firstName, lastName, email, password } = values;
       const result = await dispatch(signupUser({ firstName, lastName, email, password }));
       if (result.meta.requestStatus === "fulfilled") {
-        dispatch(fetchUserProfile());
+        await mergeCartAndOrdersAfterSignup();
+        await dispatch(fetchUserProfile());
       }
     },
   });
