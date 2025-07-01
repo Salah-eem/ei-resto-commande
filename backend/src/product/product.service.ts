@@ -21,7 +21,7 @@ export class ProductService {
   async getAll(): Promise<Product[]> {
     return await this.productModel
       .find()
-      .populate('category')
+      .populate({ path: 'category', model: 'Category' })
       .populate({ path: 'ingredients', model: 'Ingredient' })
       .exec();
   }
@@ -124,7 +124,7 @@ export class ProductService {
     }
     return updatedProduct;
   }
-
+ 
   async getMostOrderedProducts(): Promise<any[]> {
     // Agrégation sur la collection OrderItem pour compter les quantités par produit
     const OrderItem = this.productModel.db.model('OrderItem');

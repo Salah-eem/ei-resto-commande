@@ -31,7 +31,7 @@ export class ProductController {
   async getAll() {
     return this.productService.getAll();
   }
-
+ 
   @Public()
   @Get('most-ordered')
   async getMostOrderedProducts() {
