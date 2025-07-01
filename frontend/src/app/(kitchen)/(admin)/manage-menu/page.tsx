@@ -801,7 +801,7 @@ const MenuManager: React.FC = () => {
                           <Box>
                             {prod.image_url && (
                               <img
-                                src={`${process.env.NEXT_PUBLIC_API_URL}${prod.image_url}`}
+                                src={`${process.env.NEXT_PUBLIC_API_URL}/${prod.image_url}`}
                                 alt={prod.name}
                                 style={{
                                   width: 40,
@@ -929,7 +929,7 @@ const MenuManager: React.FC = () => {
                     <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
                       {ingredient.image_url && (
                         <img
-                          src={`${process.env.NEXT_PUBLIC_API_URL}${ingredient.image_url}`}
+                          src={`${process.env.NEXT_PUBLIC_API_URL}/${ingredient.image_url}`}
                           alt={ingredient.name}
                           style={{
                             width: 40,
