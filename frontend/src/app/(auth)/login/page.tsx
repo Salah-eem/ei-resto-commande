@@ -149,12 +149,12 @@ const LoginPage: React.FC = () => {
         </Box>
       </Paper>
 
-      <Box sx={{ mt: 2, textAlign: 'center' }}>
+      {/* <Box sx={{ mt: 2, textAlign: 'center' }}>
         <Typography variant="body2">email client : client@email.com</Typography>
         <Typography variant="body2">email employee : aaa@aaa.aa</Typography>
         <Typography variant="body2">email admin : admin@admin.com</Typography>
         <Typography variant="body2">password : Password1,</Typography>
-      </Box>
+      </Box> */}
 
       {/* Snackbar Success */}
       <Snackbar
