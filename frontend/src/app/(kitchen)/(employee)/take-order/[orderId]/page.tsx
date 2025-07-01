@@ -380,7 +380,10 @@ const TakeOrderPage: React.FC = () => {
 
   // Filtrage & pagination des produits
   const filteredProducts = products
-    .filter((p) => p.category._id === selectedCategory)
+    .filter((p) => { 
+      if (!p.category) return false; // Ignore les produits sans catégorie
+      return p.category._id === selectedCategory;
+    })
     .filter((p) => p.name.toLowerCase().includes(search.toLowerCase()));
 
   const paginatedProducts = filteredProducts.slice(
