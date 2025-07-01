@@ -96,6 +96,8 @@ const ProductList: React.FC = () => {
       </Box>
     );
   }
+
+  console.log("Products:", products);
   return (
     <Box sx={{ p: { xs: 1, sm: 2 } }}>
       {/* Section "Articles en vedette" */}
@@ -132,18 +134,26 @@ const ProductList: React.FC = () => {
         }}
       >
         <CategoryNav categories={categories
-          .filter(category => products.some(product => product.category._id === category._id))
+          .filter(category => products.some(product => { 
+            if (!product.category) return false;
+            return product.category._id === category._id }))
           .sort((a, b) => a.idx - b.idx)
         } onCategoryChange={handleCategoryChange} />
       </Box>
 
       {/* Section "Tous les produits" divisée par catégorie */}
       {categories
-        .filter(category => products.some(product => product.category._id === category._id))
+        .filter(category => products.some(product => {
+          if (!product.category) return false;
+          return product.category._id === category._id
+        }))
         .sort((a, b) => a.idx - b.idx)
         .map((category) => {
           const productsInCategory = products.filter(
-            (product) => product.category._id === category._id
+            (product) => {
+              if (!product.category) return false;
+              return product.category._id === category._id
+            }
           );
           return (
             <Box
